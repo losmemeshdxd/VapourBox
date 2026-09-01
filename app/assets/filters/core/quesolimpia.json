@@ -3,26 +3,29 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Elimina automáticamente polvo, manchas y puntitos de VHS o película",
-  "longDescription": "Limpieza automática inteligente basada en compensación de movimiento y mediana temporal.",
+  "description": "Restauración profesional de lluvia de VHS, manchas y pelos de cámara",
+  "longDescription": "Elimina automáticamente dropouts de cinta VHS, lluvia de puntos y pelos fijos de compuerta (Gate Hair) usando compensación de movimiento sub-píxel y mediana temporal.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
   "dependencies": {
     "vs_plugins": [
       "libtemporalmedian.dll",
-      "libmvtools.dll"
+      "libmvtools.dll",
+      "libctmf.dll"
     ]
   },
   "methods": [
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Limpieza automática",
+      "description": "Restauración inteligente",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "strength",
         "threshold",
+        "temporalRadius",
+        "grainSuppress",
         "showMask"
       ]
     }
@@ -37,27 +40,52 @@
     },
     "strength": {
       "type": "integer",
-      "default": 80,
+      "default": 85,
       "min": 10,
       "max": 100,
       "step": 5,
       "ui": {
         "label": "Fuerza de Limpieza",
-        "description": "Intensidad con la que se eliminan los puntos de suciedad.",
+        "description": "Intensidad global de eliminación de puntos y lluvia de VHS.",
         "widget": "slider",
         "unit": "%"
       }
     },
     "threshold": {
       "type": "integer",
-      "default": 12,
+      "default": 10,
       "min": 2,
       "max": 30,
       "step": 1,
       "ui": {
-        "label": "Sensibilidad",
-        "description": "Sensibilidad de detección (menor número detecta puntos más pequeños).",
+        "label": "Sensibilidad de Lluvia y Puntos",
+        "description": "Sensibilidad a defectos (valores más bajos detectan chispazos y lluvia fina).",
         "widget": "slider"
+      }
+    },
+    "temporalRadius": {
+      "type": "integer",
+      "default": 1,
+      "min": 1,
+      "max": 2,
+      "step": 1,
+      "ui": {
+        "label": "Radio Temporal (1 = Normal, 2 = Lluvia Densa)",
+        "description": "Usar 2 para cintas VHS con dropouts severos o película con daño denso.",
+        "widget": "slider"
+      }
+    },
+    "grainSuppress": {
+      "type": "integer",
+      "default": 50,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Eliminador de Pelos (Gate Hair)",
+        "description": "Elimina pelos fijos en el lente/compuerta y manchas estáticas.",
+        "widget": "slider",
+        "unit": "%"
       }
     },
     "showMask": {
@@ -65,15 +93,19 @@
       "default": "off",
       "options": [
         "off",
-        "repair"
+        "repair",
+        "gate_hair",
+        "side_by_side"
       ],
       "ui": {
         "label": "Diagnóstico Visual",
-        "description": "Ver en tiempo real los puntos detectados.",
+        "description": "Ver en tiempo real los defectos que están siendo restaurados.",
         "widget": "dropdown",
         "optionLabels": {
           "off": "Desactivado (Video limpio)",
-          "repair": "Ver Puntos Detectados (Rojo)"
+          "repair": "Ver Lluvia y Puntos (Rojo)",
+          "gate_hair": "Ver Pelos Fijos Detectados (Cian)",
+          "side_by_side": "Comparar Antes / Después"
         }
       }
     }
