@@ -227,20 +227,21 @@ def QuesoLimpia(
             clip_ls = y_ls_clamped
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 4: 🛡️ MOTOR DE DIRT REMOVAL 100% MOTION-COMPENSATED (Clense Guiado)
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 4: 🛡️ MOTOR DE DIRT REMOVAL 100% MOTION-COMPENSATED (SpotLess Engine)
     # ════════════════════════════════════════════════════════════════════════
     has_mv = hasattr(core, "mv")
-    has_clense = hasattr(core, "zsmooth") and hasattr(core.zsmooth, "Clense")
+    has_tmed = hasattr(core, "tmedian")
 
-    if has_mv and has_clense:
+    if has_mv and has_tmed:
         if blksize is None:
             blksize = 32 if w > 2400 else 16 if w > 960 else 8
         overlap = blksize // 2
         if pel is None:
             pel = 2
 
-        # Guía pre-acondicionada: suaviza speckles para que MVTools rastree el movimiento real
-        guide = core.std.BoxBlur(clip_ls, hradius=2, vradius=2)
+        # Guía pre-acondicionada: suaviza speckles para que MVTools rastree el fondo real
+        guide = core.std.BoxBlur(clip_ls, hradius=1, vradius=1)
         sup_analyse = core.mv.Super(guide,   pel=pel, sharp=1, rfilter=4)
         sup_comp    = core.mv.Super(clip_ls, pel=pel, sharp=2, rfilter=4)
 
@@ -253,24 +254,32 @@ def QuesoLimpia(
         bv1 = core.mv.Recalculate(sup_analyse, bv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
         fv1 = core.mv.Recalculate(sup_analyse, fv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
 
-        # thsad=400: si no hay un buen match de movimiento, NO compensa.
-        # Evita que Clense mezcle fondos incorrectos y deje marcas brillantes/oscuras.
-        bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1, thsad=400)
-        fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1, thsad=400)
+        bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1)
+        fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1)
 
-        # Mediana temporal a lo largo de las trayectorias de movimiento
-        planes_cln = [0, 1, 2] if do_chroma else [0]
-        cln = core.zsmooth.Clense(clip_ls, previous=bc1, next=fc1, planes=planes_cln)
+        planes_tmed = [0, 1, 2] if do_chroma else [0]
 
-        # TemporalRepair mode=1: corrige residuos que Clense dejó comparando con el original.
-        # Solo toca los pixeles que son un outlier temporal estricto -> cero ghosting.
-        modes_tr = [1, 1, 1] if do_chroma else [1]
-        clip_tr = core.zsmooth.TemporalRepair(cln, clip_ls, mode=modes_tr, planes=planes_cln)
-
-        # Repair espacial mode=2: elimina cualquier marca/halo residual que quedó.
-        # Restringe cada pixel al rango de sus vecinos 3x3 en el original -> cero over-smooth.
-        modes_rp = [2, 2, 2] if do_chroma else [2]
-        clip_spotted = core.zsmooth.Repair(clip_tr, clip_ls, mode=modes_rp)
+        # Soporte multi-frame configurable por temporal_radius
+        if temporal_radius >= 2:
+            bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
+            fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
+            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+            bc2 = core.mv.Compensate(clip_ls, sup_comp, bv2)
+            fc2 = core.mv.Compensate(clip_ls, sup_comp, fv2)
+            interleaved = core.std.Interleave([fc2, fc1, clip_ls, bc1, bc2])
+            clip_spotted = interleaved.tmedian.TemporalMedian(2, planes_tmed)[2::5]
+        else:
+            interleaved = core.std.Interleave([fc1, clip_ls, bc1])
+            clip_spotted = interleaved.tmedian.TemporalMedian(1, planes_tmed)[1::3]
+    elif has_mv and hasattr(core, "zsmooth") and hasattr(core.zsmooth, "Clense"):
+        # Fallback si tmedian no estuviera disponible
+        sup = core.mv.Super(clip_ls, pel=2, sharp=1, rfilter=4)
+        bv1 = core.mv.Analyse(sup, isb=True, delta=1, blksize=16, overlap=8, search=5)
+        fv1 = core.mv.Analyse(sup, isb=False, delta=1, blksize=16, overlap=8, search=5)
+        bc1 = core.mv.Compensate(clip_ls, sup, bv1)
+        fc1 = core.mv.Compensate(clip_ls, sup, fv1)
+        clip_spotted = core.zsmooth.Clense(clip_ls, previous=bc1, next=fc1)
     else:
         clip_spotted = clip_ls
 
@@ -434,3 +443,8 @@ def QuesoLimpia(
         return core.resize.Point(clip16, format=src_fmt_id)
 
     return core.resize.Point(repaired, format=src_fmt_id)
+
+
+# Alias en minúsculas para compatibilidad
+quesolimpia = QuesoLimpia
+
