@@ -38,21 +38,46 @@ class DynamicFilterPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header
-        Text(
-          '${schema.name} Settings',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${schema.name} Settings',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  if (schema.description != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      schema.description!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                    ),
+                  ],
+                ],
               ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.restart_alt, size: 20),
+              tooltip: 'Restablecer valores por defecto',
+              onPressed: () {
+                final defaultValues = <String, dynamic>{};
+                for (final entry in schema.parameters.entries) {
+                  if (entry.value.defaultValue != null) {
+                    defaultValues[entry.key] = entry.value.defaultValue;
+                  }
+                }
+                onChanged(params.copyWith(values: defaultValues));
+              },
+            ),
+          ],
         ),
-        if (schema.description != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            schema.description!,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-          ),
-        ],
         const SizedBox(height: 16),
 
         // Build sections if defined, otherwise build flat list
