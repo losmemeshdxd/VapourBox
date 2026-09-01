@@ -146,73 +146,28 @@ def QuesoLimpia(
     h    = clip16.height
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 1: CROMA DELAY FIX ANALÓGICO (vhs-decode standard 629 kHz)
+    # ETAPA 1: ⚡ VHS RF SCANLINE DROPOUT & COMET STREAK HEALER (1D Healer)
     # ════════════════════════════════════════════════════════════════════════
+    y_raw = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
+    y_up = core.std.CropAbs(y_raw, width=w, height=h - 1, left=0, top=1).std.AddBorders(bottom=1)
+    y_down = core.std.CropAbs(y_raw, width=w, height=h - 1, left=0, top=0).std.AddBorders(top=1)
+
+    thr_val = int(8 * peak / 255)
+    streak_mask = core.std.Expr([y_raw, y_up, y_down], f"x y - abs {thr_val} > x z - abs {thr_val} > and {peak} 0 ?")
+    y_interp = core.std.Expr([y_up, y_down], "x y + 2 /")
+    y_healed = core.std.MaskedMerge(y_raw, y_interp, streak_mask)
+
     if do_chroma:
-        y_plane   = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
-        u_plane   = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
-        v_plane   = core.std.ShufflePlanes(clip16, 2, vs.GRAY)
-        u_aligned = core.resize.Spline36(u_plane, src_left=1.5)
-        v_aligned = core.resize.Spline36(v_plane, src_left=1.5)
-        clip_cd   = core.std.ShufflePlanes([y_plane, u_aligned, v_aligned], [0, 0, 0], vs.YUV)
+        u_raw = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
+        v_raw = core.std.ShufflePlanes(clip16, 2, vs.GRAY)
+        clip_healed = core.std.ShufflePlanes([y_healed, u_raw, v_raw], [0, 0, 0], vs.YUV)
     else:
-        clip_cd   = clip16
+        clip_healed = y_healed
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 2: DVO CROSS-COLOR & 3D COMB (Bifrost + DeDot + FFT3D bt=5)
+    # ETAPA 2: DVO LINE-SYNC — ESTABILIZADOR DE JITTER DE SCANLINES
     # ════════════════════════════════════════════════════════════════════════
-    clip_xc = clip_cd
-
-    # 2A. DeDot en croma
-    if do_chroma and hasattr(core, "dedot"):
-        try:
-            fmt8 = vs.YUV420P8 if clip16.format.subsampling_w == 1 else vs.YUV422P8
-            clip_sub = core.resize.Point(clip_xc, format=fmt8)
-            dedot_8 = core.dedot.Dedot(clip_sub, luma_2d=0, luma_t=0, chroma_t1=10, chroma_t2=10)
-            dedot_16 = core.resize.Point(dedot_8, format=vs.YUV420P16)
-            y_orig_p = core.std.ShufflePlanes(clip_xc, 0, vs.GRAY)
-            u_cw = clip16.width // (1 << clip16.format.subsampling_w)
-            u_ch = clip16.height // (1 << clip16.format.subsampling_h)
-            u_dd     = core.resize.Spline36(core.std.ShufflePlanes(dedot_16, 1, vs.GRAY), width=u_cw, height=u_ch)
-            v_dd     = core.resize.Spline36(core.std.ShufflePlanes(dedot_16, 2, vs.GRAY), width=u_cw, height=u_ch)
-            clip_xc  = core.std.ShufflePlanes([y_orig_p, u_dd, v_dd], [0, 0, 0], vs.YUV)
-        except Exception:
-            pass
-
-    # 2B. Bifrost: Erradicación de arcoíris de croma
-    if do_chroma and hasattr(core, "bifrost"):
-        try:
-            fmt8 = vs.YUV420P8 if clip16.format.subsampling_w == 1 else vs.YUV422P8
-            clip_8b = core.resize.Point(clip_xc, format=fmt8)
-            bifrost_8 = core.bifrost.Bifrost(clip_8b, luma_thresh=0.12, variation=6, conservative_mask=1)
-            clip_xc = core.resize.Point(bifrost_8, format=clip16.format.id)
-        except Exception:
-            pass
-
-    # 2C. FFT3D Spectral Comb en U y V con bt=5
-    if do_chroma and hasattr(core, "fft3dfilter"):
-        try:
-            fmt_ps = vs.YUV420PS if clip16.format.subsampling_w == 1 else vs.YUV444PS
-            clip_32 = core.resize.Point(clip_xc, format=fmt_ps)
-            clip_fft = core.fft3dfilter.FFT3DFilter(
-                clip_32,
-                sigma=1.5,
-                bt=5,
-                bw=16,
-                bh=16,
-                ow=8,
-                oh=8,
-                planes=[1, 2],
-                ncpu=0
-            )
-            clip_xc = core.resize.Point(clip_fft, format=clip16.format.id)
-        except Exception:
-            pass
-
-    # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 3: DVO LINE-SYNC — ESTABILIZADOR DE JITTER DE SCANLINES
-    # ════════════════════════════════════════════════════════════════════════
-    clip_ls = clip_xc
+    clip_ls = clip_healed
 
     if hasattr(core, "zsmooth"):
         y_ls = core.std.ShufflePlanes(clip_ls, 0, vs.GRAY)
@@ -227,8 +182,7 @@ def QuesoLimpia(
             clip_ls = y_ls_clamped
 
     # ════════════════════════════════════════════════════════════════════════
-    # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 4: 🛡️ MOTOR DE DIRT REMOVAL 100% MOTION-COMPENSATED (SpotLess Engine)
+    # ETAPA 3: 🛡️ MOTOR DE DIRT & RAIN REMOVAL 5-FRAME (SpotLess Dual-Motion)
     # ════════════════════════════════════════════════════════════════════════
     has_mv = hasattr(core, "mv")
     has_tmed = hasattr(core, "tmedian")
@@ -240,7 +194,7 @@ def QuesoLimpia(
         if pel is None:
             pel = 2
 
-        # Guía pre-acondicionada: suaviza speckles para que MVTools rastree el fondo real
+        # Guía pre-acondicionada para rastrear vectores puros
         guide = core.std.BoxBlur(clip_ls, hradius=1, vradius=1)
         sup_analyse = core.mv.Super(guide,   pel=pel, sharp=1, rfilter=4)
         sup_comp    = core.mv.Super(clip_ls, pel=pel, sharp=2, rfilter=4)
@@ -259,7 +213,7 @@ def QuesoLimpia(
 
         planes_tmed = [0, 1, 2] if do_chroma else [0]
 
-        # Soporte multi-frame configurable por temporal_radius
+        # Soporte multi-frame con 5 cuadros para lluvia densa de VHS
         if temporal_radius >= 2:
             bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
@@ -273,7 +227,6 @@ def QuesoLimpia(
             interleaved = core.std.Interleave([fc1, clip_ls, bc1])
             clip_spotted = interleaved.tmedian.TemporalMedian(1, planes_tmed)[1::3]
     elif has_mv and hasattr(core, "zsmooth") and hasattr(core.zsmooth, "Clense"):
-        # Fallback si tmedian no estuviera disponible
         sup = core.mv.Super(clip_ls, pel=2, sharp=1, rfilter=4)
         bv1 = core.mv.Analyse(sup, isb=True, delta=1, blksize=16, overlap=8, search=5)
         fv1 = core.mv.Analyse(sup, isb=False, delta=1, blksize=16, overlap=8, search=5)
@@ -284,7 +237,7 @@ def QuesoLimpia(
         clip_spotted = clip_ls
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 5: 🧭 MVDEGRAIN3 — INTEGRACIÓN TEMPORAL PONDERADA (6 Cuadros)
+    # ETAPA 4: 🧭 MVDEGRAIN3 — INTEGRACIÓN TEMPORAL PONDERADA (6 Cuadros)
     # ════════════════════════════════════════════════════════════════════════
     if has_mv:
         try:
@@ -309,19 +262,12 @@ def QuesoLimpia(
         y_degrained = core.std.ShufflePlanes(clip_spotted, 0, vs.GRAY) if do_chroma else clip_spotted
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 6: 🎨 CCD CHROMA CONVERGENCE + FLUXSMOOTHT ANTI-FLICKER
+    # ETAPA 5: 🎨 CHROMA FIDELITY + FLUXSMOOTHT ANTI-FLICKER
     # ════════════════════════════════════════════════════════════════════════
     if do_chroma:
         u_sp = core.std.ShufflePlanes(clip_spotted, 1, vs.GRAY)
         v_sp = core.std.ShufflePlanes(clip_spotted, 2, vs.GRAY)
         clip_denoised = core.std.ShufflePlanes([y_degrained, u_sp, v_sp], [0, 0, 0], vs.YUV)
-
-        # CCD Chroma Denoiser
-        if hasattr(core, "zsmooth") and hasattr(core.zsmooth, "CCD"):
-            try:
-                clip_denoised = core.zsmooth.CCD(clip_denoised, threshold=3.0)
-            except Exception:
-                pass
 
         # FluxSmoothT Anti-Flicker (estabiliza bombeo de AGC y parpadeo inter-frame)
         if hasattr(core, "zsmooth") and hasattr(core.zsmooth, "FluxSmoothT"):
@@ -338,7 +284,7 @@ def QuesoLimpia(
         clip_denoised = y_degrained
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 7: 🌈 16-BIT PRECISION DEBANDING (neo_f3kdb)
+    # ETAPA 6: 🌈 16-BIT PRECISION DEBANDING (neo_f3kdb)
     # ════════════════════════════════════════════════════════════════════════
     if hasattr(core, "neo_f3kdb"):
         try:
@@ -346,8 +292,8 @@ def QuesoLimpia(
                 clip_denoised,
                 range=16,
                 y=28,
-                cb=20 if do_chroma else 0,
-                cr=20 if do_chroma else 0,
+                cb=8 if do_chroma else 0,
+                cr=8 if do_chroma else 0,
                 grainy=0,
                 grainc=0,
                 output_depth=16
@@ -358,31 +304,50 @@ def QuesoLimpia(
         clip_deband = clip_denoised
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 8: 📐 DE-RINGING & AUTO-DEHALO ARMÓNICO QUIRÚRGICO 1D
+    # ETAPA 7: 📐 AUTO-DEHALO Y DE-RINGING ARMÓNICO MULTI-ESCALA 16-BIT
     # ════════════════════════════════════════════════════════════════════════
     y_clean_base = core.std.ShufflePlanes(clip_deband, 0, vs.GRAY) if do_chroma else clip_deband
 
-    low_narrow = core.std.Convolution(y_clean_base, matrix=[1, 2, 1], mode="h")
-    low_wide   = core.std.Convolution(y_clean_base, matrix=[1, 2, 4, 8, 4, 2, 1], mode="h")
-    delta_h    = core.std.Expr([low_narrow, low_wide], f"x y - {peak // 2} +")
-    abs_delta  = core.std.Expr([low_narrow, low_wide], "x y - abs")
+    # 1. Base Morfológica Multiescala (Opening y Closing para erradicación de halos blancos y negros)
+    m_ero = y_clean_base.std.Minimum().std.Minimum()
+    m_dil = y_clean_base.std.Maximum().std.Maximum()
+    m_opened = m_ero.std.Maximum().std.Maximum()
+    m_closed = m_dil.std.Minimum().std.Minimum()
 
-    halo_detect_thr = int(20 * peak / 255)
-    is_true_halo    = core.std.Expr([abs_delta], f"x {halo_detect_thr} > {peak} 0 ?")
+    # 2. Base Des-anillada Horizontal Analógica (Anti-peaking y Anti-eco de RF)
+    lp_gauss = core.std.BoxBlur(y_clean_base, hradius=3, hpasses=2, vradius=1, vpasses=1)
 
-    dark_thr        = int(40 * peak / 255)
-    is_dark_core    = core.std.Expr([y_clean_base], f"x {dark_thr} < {peak} 0 ?").std.Maximum()
+    # Base limpia sin sobre-impulso ni sub-impulso espurio
+    dehalo_base = core.std.Expr(
+        [y_clean_base, m_opened, m_closed, lp_gauss],
+        "x y > y x z < z a ? ?"
+    )
 
-    bright_thr      = int(235 * peak / 255)
-    is_bright_spec  = core.std.Expr([y_clean_base], f"x {bright_thr} > {peak} 0 ?").std.Maximum()
+    # 3. Detección Quirúrgica de Corona de Borde (Halo Corona Mask)
+    edge = core.std.Prewitt(y_clean_base)
+    edge_thr = int(30 * peak / 255)
+    strong_edge = core.std.Expr([edge], f"x {edge_thr} > {peak} 0 ?")
 
-    is_halo_zone    = core.std.Expr([is_true_halo, is_dark_core, is_bright_spec], "y 0 > z 0 > or 0 x ?")
+    # Corona periférica del halo (excluye el núcleo de transición directa)
+    halo_corona = strong_edge.std.Maximum().std.Maximum()
+    edge_core = strong_edge.std.Inflate()
+    halo_zone = core.std.Expr([halo_corona, edge_core], "x y - 0 max")
 
-    y_de_ring = core.std.Expr([y_clean_base, delta_h, is_halo_zone], f"z 0 > x y {peak // 2} - 0.70 * - x ?")
-    y_de_ring = core.std.Expr([y_de_ring], f"x 0 max {peak} min")
+    # 4. Detección de Desviación de Halo
+    diff_bright = core.std.Expr([y_clean_base, m_opened], "x y - 0 max")
+    diff_dark   = core.std.Expr([y_clean_base, m_closed], "y x - 0 max")
+    thr_diff = int(4 * peak / 255)
+
+    halo_detect = core.std.Expr(
+        [diff_bright, diff_dark, halo_zone],
+        f"z 0 > x {thr_diff} > y {thr_diff} > or and {peak} 0 ?"
+    )
+    halo_mask = halo_detect.std.Maximum().std.Deflate()
+
+    y_de_ring = core.std.MaskedMerge(y_clean_base, dehalo_base, halo_mask)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 9: 💎 REALCE ADAPTATIVO POR CONTRASTE EN 16-BIT NATIVO (CAS)
+    # ETAPA 8: 💎 REALCE ADAPTATIVO POR CONTRASTE EN 16-BIT NATIVO (CAS)
     # ════════════════════════════════════════════════════════════════════════
     if hasattr(core, 'cas'):
         sharp_val = 0.15 * (strength / 100.0)
@@ -419,7 +384,7 @@ def QuesoLimpia(
         )
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 10: DIAGNÓSTICO VISUAL
+    # ETAPA 9: DIAGNÓSTICO VISUAL
     # ════════════════════════════════════════════════════════════════════════
     if show_mask == "repair":
         diff = core.std.Expr([clip16, repaired], "x y - abs 20 *")
@@ -435,7 +400,7 @@ def QuesoLimpia(
     if show_mask == "xcolor_mask":
         if do_chroma:
             u_before = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
-            u_after  = core.std.ShufflePlanes(clip_xc, 1, vs.GRAY)
+            u_after  = core.std.ShufflePlanes(cleaned_final, 1, vs.GRAY)
             u_b_up   = core.resize.Point(u_before, width=w, height=h)
             u_a_up   = core.resize.Point(u_after, width=w, height=h)
             diff_uv  = core.std.Expr([u_b_up, u_a_up], "x y - abs 20 *")
