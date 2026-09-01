@@ -198,7 +198,7 @@ def _build_dirt_map(
     if detect_bright:
         bright_mask = core.std.Expr(
             [clip, bc1, fc1],
-            f"x y max z max x - {thr * 0.8:.4f} > {peak_v} 0 ?"
+            f"x y z max - {thr * 0.7:.4f} > {peak_v} 0 ?"
         )
 
     # — Polvo oscuro (punto oscuro en cuadro actual, claro en vecinos) —
@@ -206,7 +206,7 @@ def _build_dirt_map(
     if detect_dark:
         dark_mask = core.std.Expr(
             [clip, bc1, fc1],
-            f"y x min z x min min {thr * 0.8:.4f} > {peak_v} 0 ?"
+            f"y z min x - {thr * 0.7:.4f} > {peak_v} 0 ?"
         )
 
     # — Rama espacial (polvo de bajo contraste vs entorno local) —
@@ -214,12 +214,9 @@ def _build_dirt_map(
     if detect_spatial:
         local_med    = clip.ctmf.CTMF(radius=2, planes=planes)
         spatial_diff = core.std.Expr([clip, local_med], "x y - abs")
-        # Solo cuenta si también hay señal temporal débil (anti-falso-positivo)
-        spatial_raw  = core.std.Expr([spatial_diff],
+        # Detectar diferencia con la mediana espacial local
+        spatial_mask = core.std.Expr([spatial_diff],
             f"x {spatial_threshold:.4f} > {peak_v} 0 ?")
-        # Confirmar con señal temporal (and lógico suavizado)
-        spatial_mask = core.std.Expr([spatial_raw, temporal_mask],
-            f"x {peak_v // 2} > y 0 > and {peak_v} 0 ?")
 
     # — Máscara bruta: unión de todas las ramas —
     raw_mask = core.std.Expr(
@@ -247,15 +244,13 @@ def _suppress_grain_fps(mask: vs.VideoNode, level: int) -> vs.VideoNode:
         return mask
     bits   = mask.format.bits_per_sample
     peak_v = _peak(bits)
-    # Un píxel aislado: max de sus vecinos >> min de sus vecinos
-    eroded  = mask.std.Minimum()
-    dilated = mask.std.Maximum()
-    # Píxel genuinamente aislado: dilated alto pero eroded bajo
-    suppress_thr = peak_v * level / 100
-    isolated = core.std.Expr([dilated, eroded],
-        f"x {peak_v // 2} > y {suppress_thr:.0f} < and {peak_v} 0 ?")
-    # Mantener solo los píxeles que pasan el test de aislamiento
-    return core.std.Expr([mask, isolated], "x y min")
+    # Si la supresión de grano es moderada, solo suavizar grano disperso
+    eroded = mask
+    for _ in range(max(1, level // 35)):
+        eroded = eroded.std.Minimum(planes=[0])
+    for _ in range(max(1, level // 35) + 1):
+        eroded = eroded.std.Maximum(planes=[0])
+    return core.std.Expr([mask, eroded], "x y min")
 
 
 # ---------------------------------------------------------------------------
@@ -272,42 +267,44 @@ def _refine_mask(
     """
     1. Erosión N veces → elimina manchas < min_size
     2. Dilatación N+2 veces → expande las que sobrevivieron (cubre bordes del polvo)
-    3. Protección de bordes con TCanny
-    4. Suavizado de bordes de la máscara (Inflate ×2)
+    3. Limitador de tamaño máximo (elimina objetos grandes > max_size)
+    4. Protección de bordes con TCanny
+    5. Suavizado de bordes de la máscara (Inflate)
     """
     bits   = mask.format.bits_per_sample
     peak_v = _peak(bits)
 
-    # Erosión: descarta manchas muy pequeñas (grano suelto)
     m = mask
-    for _ in range(max(0, min_size)):
-        m = m.std.Minimum(planes=[0])
-
-    # Dilatación: recuperar tamaño + cubrir los bordes del polvo
-    dilate_iters = min_size + 2
-    for _ in range(dilate_iters):
+    # Erosión: descarta manchas muy pequeñas si min_size > 0
+    if min_size > 0:
+        for _ in range(min_size):
+            m = m.std.Minimum(planes=[0])
+        for _ in range(min_size + 1):
+            m = m.std.Maximum(planes=[0])
+    else:
         m = m.std.Maximum(planes=[0])
 
-    # Limitar a max_size: si tras max_size+2 dilataciones adicionales la mancha
-    # sigue creciendo significa que es un objeto real → borrar esa región
+    # Limitar a max_size: si la mancha es mayor que max_size píxeles,
+    # sobrevive a max_size erosiones -> detectarla como objeto grande y excluirla
     if max_size > 0:
-        m_test = m
+        eroded_large = m
         for _ in range(max_size):
-            m_test = m_test.std.Maximum(planes=[0])
-        # Donde m_test == m ya era máximo → objeto grande → quitar
-        m = core.std.Expr([m, m_test],
-            f"x {peak_v // 2} > y {peak_v // 2} > not and {peak_v} 0 ?")
+            eroded_large = eroded_large.std.Minimum(planes=[0])
+        for _ in range(max_size + 2):
+            eroded_large = eroded_large.std.Maximum(planes=[0])
+        # Excluir objetos grandes de la máscara de suciedad
+        m = core.std.Expr([m, eroded_large],
+            f"x {peak_v // 2} > y {peak_v // 2} < and {peak_v} 0 ?")
 
-    # Protección de bordes: bordes fuertes → contenido real → no tocar
+    # Protección de bordes: bordes de alto contraste se protegen
     if edge_protect > 0:
-        ep_scale = edge_protect / 100.0
-        edges    = clip.tcanny.TCanny(sigma=1.5, mode=0, planes=[0])
-        edges_d  = edges.std.Maximum(planes=[0])
+        edges   = clip.tcanny.TCanny(sigma=1.2, mode=0, planes=[0])
+        edges_d = edges.std.Maximum(planes=[0])
+        edge_threshold = int(peak_v * (101 - edge_protect) / 100 * 0.6)
         m = core.std.Expr([m, edges_d],
-            f"x {peak_v // 2} > y {int(peak_v * ep_scale * 0.5):.0f} > not and {peak_v} 0 ?")
+            f"x {peak_v // 2} > y {edge_threshold} < and {peak_v} 0 ?")
 
     # Suavizar bordes de la máscara para transiciones naturales
-    m = m.std.Inflate(planes=[0])
     m = m.std.Inflate(planes=[0])
 
     return m

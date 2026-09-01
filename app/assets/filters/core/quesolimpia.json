@@ -3,8 +3,8 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Limpieza profesional de polvo y manchas basada en DVO / DIAMANT / MTI DRS",
-  "longDescription": "Motor de restauración ultra-minucioso de polvo, suciedad y defectos temporales/estáticos.\n\nCombina detección espacio-temporal bidireccional, supresión de falsos positivos por grano, protección de bordes y cortes de escena, además de auto-curación de defectos estáticos (gate hair).",
+  "description": "Limpieza profesional de polvo, manchas y puntitos",
+  "longDescription": "Elimina automáticamente polvo, suciedad, pelos y puntitos temporales sin afectar el movimiento ni los detalles de la imagen.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
@@ -19,12 +19,13 @@
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Restauración selectiva por mapa de suciedad",
+      "description": "Limpieza inteligente de suciedad",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "mode",
         "strength",
         "threshold",
+        "showMask",
         "spatialThreshold",
         "minDustSize",
         "maxDustSize",
@@ -40,8 +41,7 @@
         "grainRestore",
         "temporalRadius",
         "blksize",
-        "pel",
-        "showMask"
+        "pel"
       ]
     }
   ],
@@ -59,18 +59,16 @@
       "options": [
         "gentle",
         "balanced",
-        "aggressive",
-        "forensic"
+        "aggressive"
       ],
       "ui": {
-        "label": "Modo de Restauración",
-        "description": "Preconfiguración de agresividad según el estado del material.",
+        "label": "Modo de Limpieza",
+        "description": "Nivel de limpieza según el estado del material.",
         "widget": "dropdown",
         "optionLabels": {
-          "gentle": "Gentle (Material poco sucio / VHS)",
-          "balanced": "Balanced (Estándar / Telecine)",
-          "aggressive": "Aggressive (16mm / Film muy sucio)",
-          "forensic": "Forensic (Restauración de archivo)"
+          "gentle": "Suave (Poco sucio / Cintas caseras)",
+          "balanced": "Estándar (Film / Telecine)",
+          "aggressive": "Fuerte (8mm / 16mm muy sucio)"
         }
       }
     },
@@ -81,137 +79,22 @@
       "max": 100,
       "step": 5,
       "ui": {
-        "label": "Fuerza General",
-        "description": "Sensibilidad global de detección de suciedad.",
+        "label": "Fuerza de Limpieza",
+        "description": "Intensidad con la que se eliminan los puntos de polvo.",
+        "widget": "slider",
+        "unit": "%"
+      }
+    },
+    "threshold": {
+      "type": "integer",
+      "default": 15,
+      "min": 5,
+      "max": 40,
+      "step": 1,
+      "ui": {
+        "label": "Sensibilidad de Puntos",
+        "description": "Sensibilidad de detección (valores más bajos detectan puntos más tenues).",
         "widget": "slider"
-      }
-    },
-    "detectBright": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Detectar Polvo Brillante",
-        "description": "Detectar y eliminar puntos y manchas blancas."
-      }
-    },
-    "detectDark": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Detectar Polvo Oscuro",
-        "description": "Detectar y eliminar puntos y manchas negras."
-      }
-    },
-    "detectSpatial": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Polvo de Bajo Contraste",
-        "description": "Rama espacial para detectar manchas sutiles de suciedad o moho."
-      }
-    },
-    "detectStatic": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Defectos Estáticos (Gate Hair)",
-        "description": "Detectar y reparar cabellos y manchas fijas de lente / ventanilla con inpainting espacial."
-      }
-    },
-    "grainSuppress": {
-      "type": "integer",
-      "default": 40,
-      "min": 0,
-      "max": 100,
-      "step": 5,
-      "ui": {
-        "label": "Supresión de Grano (Anti Falsos Positivos)",
-        "description": "Evita confundir la textura del grano de película con suciedad.",
-        "widget": "slider",
-        "advanced": true
-      }
-    },
-    "edgeProtect": {
-      "type": "integer",
-      "default": 50,
-      "min": 0,
-      "max": 100,
-      "step": 5,
-      "ui": {
-        "label": "Protección de Bordes",
-        "description": "Protege líneas finas, ojos y detalles reales usando detección de bordes Canny.",
-        "widget": "slider",
-        "advanced": true
-      }
-    },
-    "grainRestore": {
-      "type": "integer",
-      "default": 30,
-      "min": 0,
-      "max": 100,
-      "step": 5,
-      "ui": {
-        "label": "Compensación de Grano",
-        "description": "Reinyecta grano sintético en las áreas reparadas para que sean invisibles.",
-        "widget": "slider",
-        "advanced": true
-      }
-    },
-    "sceneProtect": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Protección de Cortes de Escena",
-        "description": "Evita artefactos de arrastre en transiciones y cambios de toma.",
-        "advanced": true
-      }
-    },
-    "chroma": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Procesar Croma",
-        "description": "Limpiar también planos de color.",
-        "advanced": true
-      }
-    },
-    "temporalRadius": {
-      "type": "integer",
-      "default": 1,
-      "min": 1,
-      "max": 2,
-      "step": 1,
-      "ui": {
-        "label": "Radio Temporal",
-        "description": "1 = ±1 cuadro, 2 = ±2 cuadros (mayor precisión, más lento).",
-        "widget": "slider",
-        "advanced": true
-      }
-    },
-    "minDustSize": {
-      "type": "integer",
-      "default": 1,
-      "min": 0,
-      "max": 8,
-      "step": 1,
-      "ui": {
-        "label": "Tamaño Mínimo de Polvo",
-        "description": "Descarta defectos menores a este tamaño en píxeles.",
-        "widget": "slider",
-        "advanced": true
-      }
-    },
-    "maxDustSize": {
-      "type": "integer",
-      "default": 16,
-      "min": 2,
-      "max": 64,
-      "step": 2,
-      "ui": {
-        "label": "Tamaño Máximo de Polvo",
-        "description": "Evita borrar objetos grandes en movimiento.",
-        "widget": "slider",
-        "advanced": true
       }
     },
     "showMask": {
@@ -219,25 +102,166 @@
       "default": "off",
       "options": [
         "off",
-        "raw",
-        "refined",
         "repair",
-        "static",
         "side_by_side"
       ],
       "ui": {
         "label": "Diagnóstico Visual",
-        "description": "Modo de vista previa para inspeccionar las máscaras de suciedad.",
+        "description": "Visualizar qué manchas están siendo detectadas.",
         "widget": "dropdown",
         "optionLabels": {
-          "off": "Desactivado (Video final)",
-          "raw": "Dirt Map sin filtrar",
-          "refined": "Máscara refinada",
-          "repair": "Overlay de reparación (Rojo/Azul)",
-          "static": "Solo defectos estáticos (Gate Hair)",
-          "side_by_side": "Comparación lado a lado"
-        },
-        "advanced": true
+          "off": "Desactivado (Video limpio)",
+          "repair": "Ver Manchas Detectadas (Rojo)",
+          "side_by_side": "Comparar Antes / Después"
+        }
+      }
+    },
+    "spatialThreshold": {
+      "type": "integer",
+      "default": 15,
+      "min": 1,
+      "max": 40,
+      "ui": {
+        "advanced": true,
+        "label": "Sensibilidad Espacial"
+      }
+    },
+    "minDustSize": {
+      "type": "integer",
+      "default": 0,
+      "min": 0,
+      "max": 8,
+      "ui": {
+        "advanced": true,
+        "label": "Tamaño Mínimo de Punto"
+      }
+    },
+    "maxDustSize": {
+      "type": "integer",
+      "default": 16,
+      "min": 2,
+      "max": 64,
+      "ui": {
+        "advanced": true,
+        "label": "Tamaño Máximo de Mancha"
+      }
+    },
+    "detectBright": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "advanced": true,
+        "label": "Detectar Puntos Blancos"
+      }
+    },
+    "detectDark": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "advanced": true,
+        "label": "Detectar Puntos Negros"
+      }
+    },
+    "detectSpatial": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "advanced": true,
+        "label": "Detección Espacial"
+      }
+    },
+    "detectStatic": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "advanced": true,
+        "label": "Eliminar Pelos / Defectos Fijos"
+      }
+    },
+    "grainSuppress": {
+      "type": "integer",
+      "default": 30,
+      "min": 0,
+      "max": 100,
+      "ui": {
+        "advanced": true,
+        "label": "Supresión de Grano"
+      }
+    },
+    "edgeProtect": {
+      "type": "integer",
+      "default": 40,
+      "min": 0,
+      "max": 100,
+      "ui": {
+        "advanced": true,
+        "label": "Protección de Bordes"
+      }
+    },
+    "sceneProtect": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "advanced": true,
+        "label": "Proteger Cortes de Escena"
+      }
+    },
+    "sceneThreshold": {
+      "type": "float",
+      "default": 0.10,
+      "min": 0.01,
+      "max": 0.50,
+      "ui": {
+        "advanced": true,
+        "label": "Umbral de Cambio de Escena"
+      }
+    },
+    "chroma": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "advanced": true,
+        "label": "Limpiar Color / Croma"
+      }
+    },
+    "grainRestore": {
+      "type": "integer",
+      "default": 20,
+      "min": 0,
+      "max": 100,
+      "ui": {
+        "advanced": true,
+        "label": "Restaurar Grano Natural"
+      }
+    },
+    "temporalRadius": {
+      "type": "integer",
+      "default": 1,
+      "min": 1,
+      "max": 2,
+      "ui": {
+        "advanced": true,
+        "label": "Radio Temporal"
+      }
+    },
+    "blksize": {
+      "type": "integer",
+      "default": 16,
+      "min": 4,
+      "max": 64,
+      "ui": {
+        "advanced": true,
+        "label": "Tamaño de Bloque"
+      }
+    },
+    "pel": {
+      "type": "integer",
+      "default": 2,
+      "min": 1,
+      "max": 4,
+      "ui": {
+        "advanced": true,
+        "label": "Precisión Sub-píxel"
       }
     }
   }
