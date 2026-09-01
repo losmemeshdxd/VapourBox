@@ -67,13 +67,7 @@ class DynamicFilterPanel extends StatelessWidget {
               icon: const Icon(Icons.restart_alt, size: 20),
               tooltip: 'Restablecer valores por defecto',
               onPressed: () {
-                final defaultValues = <String, dynamic>{};
-                for (final entry in schema.parameters.entries) {
-                  if (entry.value.defaultValue != null) {
-                    defaultValues[entry.key] = entry.value.defaultValue;
-                  }
-                }
-                onChanged(params.copyWith(values: defaultValues));
+                onChanged(DynamicParameters.fromSchema(schema, enabled: params.enabled));
               },
             ),
           ],
