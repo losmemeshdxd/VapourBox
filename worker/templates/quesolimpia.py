@@ -132,7 +132,7 @@ def QuesoLimpia(
 
     # ── 2. DETECCIÓN Y RESTAURACIÓN DE PELOS / GATE HAIR ─────────────────────
     static_mask = None
-    if gate_hair > 0:
+    if detect_static:
         # Un pelo fijo o suciedad de compuerta persiste en el mismo lugar en 3 cuadros seguidos
         prev_m = volatile_mask[-1:] + volatile_mask[:-1]
         next_m = volatile_mask[1:]  + volatile_mask[-1:]
@@ -148,14 +148,7 @@ def QuesoLimpia(
 
         # Reparación espacial (Inpainting / CTMF de radio 4) para reemplazar el pelo
         repaired_spatial = clip_work.ctmf.CTMF(radius=4, planes=planes)
-
-        # Ajustar según slider gate_hair (0% - 100%)
-        if gate_hair < 100:
-            weight = gate_hair / 100.0
-            hair_mask_weighted = core.std.Expr([static_mask], f"x {weight:.3f} *")
-            repaired = core.std.MaskedMerge(repaired, repaired_spatial, hair_mask_weighted, planes=planes)
-        else:
-            repaired = core.std.MaskedMerge(repaired, repaired_spatial, static_mask, planes=planes)
+        repaired = core.std.MaskedMerge(repaired, repaired_spatial, static_mask, planes=planes)
 
     # ── Diagnóstico visual ───────────────────────────────────────────────────
     if show_mask == "repair":

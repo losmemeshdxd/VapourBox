@@ -25,7 +25,7 @@
         "strength",
         "threshold",
         "temporalRadius",
-        "grainSuppress",
+        "detectStatic",
         "showMask"
       ]
     }
@@ -75,17 +75,12 @@
         "widget": "slider"
       }
     },
-    "grainSuppress": {
-      "type": "integer",
-      "default": 50,
-      "min": 0,
-      "max": 100,
-      "step": 5,
+    "detectStatic": {
+      "type": "boolean",
+      "default": true,
       "ui": {
-        "label": "Eliminador de Pelos (Gate Hair)",
-        "description": "Elimina pelos fijos en el lente/compuerta y manchas estáticas.",
-        "widget": "slider",
-        "unit": "%"
+        "label": "Eliminar Pelos Fijos de Cámara (Gate Hair)",
+        "description": "Reconstruye pelos fijos en la compuerta o manchas estáticas en el lente."
       }
     },
     "showMask": {
