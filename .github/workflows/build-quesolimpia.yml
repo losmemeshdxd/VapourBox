@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-15  # Apple Silicon (macOS 15 runner with Xcode)
+    runs-on: macos-15  # Apple Silicon runner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,72 +31,24 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
-      - name: Build Rust worker (ARM64)
+      - name: Package VapourBox macOS with QuesoLimpia (DMG + App)
         run: |
-          cd worker
-          cargo build --release --target aarch64-apple-darwin
+          chmod +x ./Scripts/package-macos.sh
+          ./Scripts/package-macos.sh --no-sign --arch arm64
 
-      - name: Build Flutter macOS App (Two-step xcodebuild with CocoaPods)
-        env:
-          VAPOURBOX_ARCHS: arm64
-          VAPOURBOX_DEPLOYMENT_TARGET: "15.0"
-          MACOSX_DEPLOYMENT_TARGET: "15.0"
-        run: |
-          cd app
-          flutter pub get
-          dart run build_runner build --delete-conflicting-outputs
-
-          # Generate ephemeral Flutter macOS files
-          flutter build macos --release || true
-
-          # Clean and install CocoaPods
-          cd macos
-          rm -rf Pods Podfile.lock
-          pod install
-
-          # Build Pods-Runner scheme
-          xcodebuild -workspace Runner.xcworkspace -scheme Pods-Runner \
-              -configuration Release build ONLY_ACTIVE_ARCH=NO \
-              ARCHS="arm64" \
-              MACOSX_DEPLOYMENT_TARGET="15.0" \
-              -quiet
-
-          # Build Runner scheme
-          xcodebuild -workspace Runner.xcworkspace -scheme Runner \
-              -configuration Release build ONLY_ACTIVE_ARCH=NO \
-              ARCHS="arm64" \
-              MACOSX_DEPLOYMENT_TARGET="15.0" \
-              -quiet
-
-          # Locate built .app
-          DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "vapourbox.app" -o -name "VapourBox.app" 2>/dev/null | head -1)
-          if [ -z "$DERIVED_APP" ]; then
-              DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" 2>/dev/null | head -1)
-          fi
-          echo "Found built app at: $DERIVED_APP"
-
-          mkdir -p ../build/macos/Build/Products/Release
-          cp -R "$DERIVED_APP" ../build/macos/Build/Products/Release/VapourBox.app
-
-      - name: Assemble VapourBox Bundle with QuesoLimpia
-        run: |
-          APP_PATH="app/build/macos/Build/Products/Release/VapourBox.app"
-          echo "Assembling bundle at $APP_PATH"
-
-          # Inject updated Rust worker
-          cp worker/target/aarch64-apple-darwin/release/vapourbox-worker "$APP_PATH/Contents/MacOS/vapourbox-worker"
-          chmod +x "$APP_PATH/Contents/MacOS/vapourbox-worker"
-
-          # Inject templates including quesolimpia.py
-          mkdir -p "$APP_PATH/Contents/Resources/templates"
-          cp -R worker/templates/* "$APP_PATH/Contents/Resources/templates/"
-
-          # Package as Zip
-          cd app/build/macos/Build/Products/Release
-          zip -r -y VapourBox-macOS-arm64-QuesoLimpia.zip VapourBox.app
-
-      - name: Upload Artifact
+      - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VapourBox-macOS-arm64-QuesoLimpia
-          path: app/build/macos/Build/Products/Release/VapourBox-macOS-arm64-QuesoLimpia.zip
+          name: VapourBox-macOS-arm64-QuesoLimpia-DMG
+          path: dist/*.dmg
+
+      - name: Upload App Zip Artifact
+        run: |
+          cd dist
+          zip -r -y VapourBox-macOS-arm64-QuesoLimpia-App.zip VapourBox.app
+        
+      - name: Upload Zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VapourBox-macOS-arm64-QuesoLimpia-App
+          path: dist/VapourBox-macOS-arm64-QuesoLimpia-App.zip
