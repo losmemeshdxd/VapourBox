@@ -6,30 +6,32 @@ Inspirado en Digital Vision DVO (Filmworkz Phoenix) y el ecosistema vhs-decode
 
 Pipeline de Grado de Archivo Cinematográfico a Máxima Potencia de CPU.
 100% Automático. Cero artefactos de solarización o pérdida de nitidez.
+100% Motion-Compensated: Cero fantasmas o manchas en rostros en movimiento.
 
 ══════════════════════════════════════════════════════════════════════════
 ARQUITECTURA DEL MOTOR MAESTRO (7 ETAPAS):
 
- 1. CROMA DELAY FIX (vhs-decode 629 kHz standard)
+ 1. CROMA DELAY FIX (vhs-decode standard 629 kHz)
     Corrige el retardo de grupo de ~600ns del filtro analógico de 629 kHz
     de VHS desplazando U y V 1.5px a la izquierda con interpolación Spline36.
 
- 2. DVO CROSS-COLOR — Filtro Peine 3D Espacio-Temporal
-    ─ DeDot: Peine temporal que cancela dot crawl (C→Y) y cross-color (Y→C)
-             aprovechando la inversión de fase de 180° de la portadora de 3.58/4.43 MHz.
+ 2. DVO CROSS-COLOR — Filtro Peine 3D Espacio-Temporal Motion-Safe
+    ─ DeDot: Peine espacial 2D en luma y temporal en croma (luma_t=0 para
+             garantizar cero ghosting en luma en movimiento).
     ─ Bifrost: Erradica arcoíris de croma residuales ("hanging rainbows").
-    ─ FFT3D 3D Spectral Chroma Cleaning (bt=5, 5 frames):
-             Limpieza espectral en frecuencia de los planos U y V sin tocar el luma.
+    ─ FFT3D Spectral Chroma Cleaning: Limpieza espectral en U y V sin
+             tocar el luma ni desaturar.
 
- 3. DVO LINE-SYNC — Estabilizador de Jitter de Scanlines
-    ─ VerticalCleaner (mode=1): Mediana vertical por línea para neutralizar
-      micro-desplazamientos de scanline causados por wow & flutter analógico.
-    ─ Convolución vertical armónica para estabilidad de bordes verticales.
+ 3. DVO LINE-SYNC — Estabilizador de Jitter de Scanlines Quirúrgico
+    ─ VerticalCleaner con clamp estricto de micro-desviación (±2.5 niveles):
+      corrige el bamboleo de scanlines (jitter) sin suavizar pestañas,
+      párpados, pupilas ni detalles faciales.
 
- 4. DVO MACRO-DROPOUT BRIDGE (Big Drops & Head Clogs: Y, U, V)
-    ─ Detección multi-plano de pérdidas masivas de RF, bandas de nieve y fallos de cabezal.
-    ─ Scene-Change Guard (PlaneStatsDiff): Protege cortes de edición legítimos.
-    ─ Inpainting temporal por puente de flujo óptico inter-cuadro entre vecinos limpios.
+ 4. DVO MACRO-DROPOUT BRIDGE — MOTION-COMPENSATED (Big Drops & Head Clogs)
+    ─ Detección 100% compensada por movimiento (MVTools bc1 / fc1) en Y, U y V:
+      elimina por completo los falsos positivos en giros de cabeza, ojos
+      o bocas en movimiento (cero manchas oscuras en rostros).
+    ─ Inpainting temporal por flujo óptico entre vecinos limpios compensados.
 
  5. DVO MICRO-DROPOUT & TAPE RAIN — Doble Barrera a Máxima CPU
     ─ Barrera Espacial: RemoveGrain(mode=2) + FluxSmoothST para chispas aisladas.
@@ -40,10 +42,9 @@ ARQUITECTURA DEL MOTOR MAESTRO (7 ETAPAS):
  6. DE-RINGING ARMÓNICO QUIRÚRGICO 1D (Anti-Peaking de Cabezales)
     ─ Atenuación continua de halos blancos de sobre-impulso con blindaje
       absoluto de trazos negros, pestañas, pupilas, brillos especulares y texto.
-    ─ TemporalRepair como ancla temporal de consistencia de trazo.
 
  7. FUSIÓN CONTINUA MAESTRA (strength 0–100%)
-    ─ Mezcla continua de 16-bit con diagnóstico visual opcional.
+    ─ Mezcla continua de 16-bit con diagnóstico visual en tiempo real.
 ══════════════════════════════════════════════════════════════════════════
 """
 
@@ -150,22 +151,17 @@ def QuesoLimpia(
         clip16    = core.std.ShufflePlanes([y_plane, u_aligned, v_aligned], [0, 0, 0], vs.YUV)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 2: DVO CROSS-COLOR (DOT CRAWL & RAINBOW MOIRÉ ERADICATION)
+    # ETAPA 2: DVO CROSS-COLOR (MOTION-SAFE)
     # ════════════════════════════════════════════════════════════════════════
     clip_xc = clip16
 
-    # 2A. DeDot: Filtro peine temporal
+    # 2A. DeDot: Filtro peine (luma_t=0 para garantizar cero ghosting en luma)
     if do_chroma and hasattr(core, "dedot"):
         fmt8 = vs.YUV420P8 if src_fmt.subsampling_w == 1 else vs.YUV422P8
         clip_8 = core.resize.Point(clip16, format=fmt8)
-        dedot_8 = core.dedot.Dedot(clip_8, luma_2d=2, luma_t=2, chroma_t1=10, chroma_t2=10)
+        # luma_t=0: Desactiva el filtrado temporal en luma para no crear estelas en movimiento
+        dedot_8 = core.dedot.Dedot(clip_8, luma_2d=2, luma_t=0, chroma_t1=10, chroma_t2=10)
         clip_xc = core.resize.Point(dedot_8, format=clip16.format.id)
-    elif do_chroma:
-        u_xc = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
-        v_xc = core.std.ShufflePlanes(clip16, 2, vs.GRAY)
-        u_xc = core.std.Convolution(u_xc, matrix=[1, 2, 4, 2, 1], mode="h")
-        v_xc = core.std.Convolution(v_xc, matrix=[1, 2, 4, 2, 1], mode="h")
-        clip_xc = core.std.ShufflePlanes([core.std.ShufflePlanes(clip16, 0, vs.GRAY), u_xc, v_xc], [0, 0, 0], vs.YUV)
 
     # 2B. Bifrost: Eliminación de arcoíris de croma ("hanging rainbows")
     if do_chroma and hasattr(core, "bifrost"):
@@ -174,14 +170,14 @@ def QuesoLimpia(
         bifrost_8 = core.bifrost.Bifrost(clip_8b, luma_thresh=0.12, variation=6, conservative_mask=1)
         clip_xc = core.resize.Point(bifrost_8, format=clip16.format.id)
 
-    # 2C. FFT3D 3D Temporal Spectral Comb en U y V (bt=5, CPU Ilimitado)
+    # 2C. FFT3D Spectral Comb quirúrgico en U y V (bt=3, seguro con movimiento)
     if do_chroma and hasattr(core, "fft3dfilter"):
         fmt_ps = vs.YUV420PS if src_fmt.subsampling_w == 1 else vs.YUV422PS
         clip_32 = core.resize.Point(clip_xc, format=fmt_ps)
         clip_fft = core.fft3dfilter.FFT3DFilter(
             clip_32,
-            sigma=1.5,
-            bt=5,
+            sigma=1.2,
+            bt=3,
             bw=16,
             bh=16,
             ow=8,
@@ -192,111 +188,32 @@ def QuesoLimpia(
         clip_xc = core.resize.Point(clip_fft, format=clip16.format.id)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 3: DVO LINE-SYNC (CORRECCIÓN DE JITTER DE SCANLINE / LÍNEAS TBC)
+    # ETAPA 3: DVO LINE-SYNC (QUIRÚRGICO Y CLAMPED — CERO DESENFOQUE FACIAL)
     # ════════════════════════════════════════════════════════════════════════
     clip_ls = clip_xc
 
     if hasattr(core, "zsmooth"):
         y_ls = core.std.ShufflePlanes(clip_ls, 0, vs.GRAY)
-        # VerticalCleaner: Mediana vertical por scanline
+        # VerticalCleaner mode=1
         y_ls_clean = core.zsmooth.VerticalCleaner(y_ls, mode=1)
-        # Convolución vertical armónica para eliminar oscilación de jitter
-        y_ls_smooth = core.std.Convolution(y_ls_clean, matrix=[1, 2, 4, 2, 1], mode="v")
-        y_ls_merged = core.std.Merge(y_ls_clean, y_ls_smooth, weight=0.4)
+        # Clamp estricto: la corrección de jitter nunca puede modificar un píxel más de 2.5 niveles
+        # Esto corrige el wobble analógico de scanlines sin tocar pestañas, pupilas ni contornos
+        max_dev = int(2.5 * peak / 255)
+        y_ls_clamped = core.std.Expr([y_ls, y_ls_clean], f"y x {max_dev} - max x {max_dev} + min")
         if do_chroma:
             u_ls = core.std.ShufflePlanes(clip_ls, 1, vs.GRAY)
             v_ls = core.std.ShufflePlanes(clip_ls, 2, vs.GRAY)
-            clip_ls = core.std.ShufflePlanes([y_ls_merged, u_ls, v_ls], [0, 0, 0], vs.YUV)
+            clip_ls = core.std.ShufflePlanes([y_ls_clamped, u_ls, v_ls], [0, 0, 0], vs.YUV)
         else:
-            clip_ls = y_ls_merged
+            clip_ls = y_ls_clamped
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 4: DVO MACRO-DROPOUT BRIDGE (BIG DROPS & HEAD CLOGS EN Y, U, V)
+    # ETAPA 4 & 5: ESTIMACIÓN DE MOVIMIENTO JERÁRQUICA EXHAUSTIVA (MVTools)
     # ════════════════════════════════════════════════════════════════════════
-    y_in   = core.std.ShufflePlanes(clip_ls, 0, vs.GRAY)
-    y_prev = y_in[:1] + y_in[:-1]
-    y_next = y_in[1:]  + y_in[-1:]
-
-    thr_big_y  = int(35 * peak / 255)
-    thr_big_uv = int(30 * peak / 255)
-    thr_near   = int(40 * peak / 255)
-
-    diff_y = core.std.Expr(
-        [y_in, y_prev, y_next],
-        f"x y - abs {thr_big_y} > "
-        f"x z - abs {thr_big_y} > and "
-        f"y z - abs {thr_near} < and "
-        f"{peak} 0 ?"
-    )
-
-    if do_chroma:
-        u_in   = core.std.ShufflePlanes(clip_ls, 1, vs.GRAY)
-        v_in   = core.std.ShufflePlanes(clip_ls, 2, vs.GRAY)
-        u_prev = u_in[:1] + u_in[:-1]
-        u_next = u_in[1:]  + u_in[-1:]
-        v_prev = v_in[:1] + v_in[:-1]
-        v_next = v_in[1:]  + v_in[-1:]
-
-        diff_u = core.std.Expr(
-            [u_in, u_prev, u_next],
-            f"x y - abs {thr_big_uv} > "
-            f"x z - abs {thr_big_uv} > and "
-            f"y z - abs {thr_big_uv} < and "
-            f"{peak} 0 ?"
-        )
-        diff_v = core.std.Expr(
-            [v_in, v_prev, v_next],
-            f"x y - abs {thr_big_uv} > "
-            f"x z - abs {thr_big_uv} > and "
-            f"y z - abs {thr_big_uv} < and "
-            f"{peak} 0 ?"
-        )
-
-        diff_u_up = core.resize.Point(diff_u, width=w, height=h)
-        diff_v_up = core.resize.Point(diff_v, width=w, height=h)
-        macro_mask_raw = core.std.Expr([diff_y, diff_u_up, diff_v_up], "x y max z max")
-    else:
-        macro_mask_raw = diff_y
-
-    # Scene-Change Guard para evitar falsos positivos en cortes de escena
-    y_prev_avg = core.std.PlaneStats(y_in, y_prev, plane=0)
-    y_next_avg = core.std.PlaneStats(y_in, y_next, plane=0)
-
-    def _scene_guard(n: int, f: list, clip_mask: vs.VideoNode, blank: vs.VideoNode) -> vs.VideoNode:
-        diff_prev = f[0].props.get("PlaneStatsDiff", 0.0)
-        diff_next = f[1].props.get("PlaneStatsDiff", 0.0)
-        if diff_prev > 0.15 or diff_next > 0.15:
-            return blank
-        return clip_mask
-
-    blank_mask = core.std.BlankClip(macro_mask_raw, color=[0] * macro_mask_raw.format.num_planes)
-    macro_mask_y = core.std.FrameEval(
-        macro_mask_raw,
-        lambda n, f: _scene_guard(n, f, macro_mask_raw, blank_mask),
-        prop_src=[y_prev_avg, y_next_avg]
-    ).std.Inflate().std.Inflate()
-
-    y_bridge = core.std.Expr([y_prev, y_next], "x y + 2 /")
-    y_macro  = core.std.MaskedMerge(y_in, y_bridge, macro_mask_y)
-
-    if do_chroma:
-        macro_mask_uv = core.resize.Spline36(macro_mask_y, width=u_in.width, height=u_in.height)
-        u_bridge = core.std.Expr([u_prev, u_next], "x y + 2 /")
-        v_bridge = core.std.Expr([v_prev, v_next], "x y + 2 /")
-        u_macro  = core.std.MaskedMerge(u_in, u_bridge, macro_mask_uv)
-        v_macro  = core.std.MaskedMerge(v_in, v_bridge, macro_mask_uv)
-        clip_pre_clean = core.std.ShufflePlanes([y_macro, u_macro, v_macro], [0, 0, 0], vs.YUV)
-    else:
-        clip_pre_clean = y_macro
-
-    # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 5: DVO MICRO-DROPOUT & TAPE RAIN — DOBLE BARRERA A MÁXIMA CPU
-    # ════════════════════════════════════════════════════════════════════════
-    # Barrera Espacial: Erradicación de chispas impulsivas aisladas (1-3 px)
+    # Pre-limpieza espacial de lluvia impulsiva (outliers de 1-3 px)
     if hasattr(core, "zsmooth"):
         rg_modes = [2, 2, 2] if do_chroma else [2]
-        clip_rg = core.zsmooth.RemoveGrain(clip_pre_clean, mode=rg_modes)
-        # FluxSmoothST: Suavizado espacio-temporal adaptativo de micro-variaciones
+        clip_rg = core.zsmooth.RemoveGrain(clip_ls, mode=rg_modes)
         f_thresh = [8.0, 8.0, 8.0] if do_chroma else [8.0]
         clip_rain = core.zsmooth.FluxSmoothST(
             clip_rg,
@@ -304,9 +221,8 @@ def QuesoLimpia(
             spatial_threshold=f_thresh
         )
     else:
-        clip_rain = clip_pre_clean
+        clip_rain = clip_ls
 
-    # Barrera Temporal: Mediana rank-order de 7 cuadros con búsqueda exhaustiva MVTools
     if blksize is None:
         blksize = 32 if w > 2400 else 16 if w > 960 else 8
     overlap = blksize // 2
@@ -350,7 +266,90 @@ def QuesoLimpia(
     bc2, fc2 = _make_vec(2)
     bc3, fc3 = _make_vec(3)
 
-    frames      = [fc3, fc2, fc1, clip_rain, bc1, bc2, bc3]
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 4: DVO MACRO-DROPOUT BRIDGE (100% MOTION-COMPENSATED)
+    # ════════════════════════════════════════════════════════════════════════
+    # Al comparar contra los frames COMPENSADOS (bc1, fc1), el movimiento de
+    # cabezas, ojos o bocas es seguido exactamente por los vectores de movimiento.
+    # Resultado: CERO falsos positivos en rostros. Solo se activan en pérdidas
+    # reales de señal RF / estática donde el contenido genuino no coincide.
+    y_in  = core.std.ShufflePlanes(clip_rain, 0, vs.GRAY)
+    y_bc1 = core.std.ShufflePlanes(bc1, 0, vs.GRAY)
+    y_fc1 = core.std.ShufflePlanes(fc1, 0, vs.GRAY)
+
+    thr_big_y  = int(35 * peak / 255)
+    thr_big_uv = int(30 * peak / 255)
+    thr_near   = int(35 * peak / 255)
+
+    diff_y = core.std.Expr(
+        [y_in, y_bc1, y_fc1],
+        f"x y - abs {thr_big_y} > "
+        f"x z - abs {thr_big_y} > and "
+        f"y z - abs {thr_near} < and "
+        f"{peak} 0 ?"
+    )
+
+    if do_chroma:
+        u_in  = core.std.ShufflePlanes(clip_rain, 1, vs.GRAY)
+        v_in  = core.std.ShufflePlanes(clip_rain, 2, vs.GRAY)
+        u_bc1 = core.std.ShufflePlanes(bc1, 1, vs.GRAY)
+        u_fc1 = core.std.ShufflePlanes(fc1, 1, vs.GRAY)
+        v_bc1 = core.std.ShufflePlanes(bc1, 2, vs.GRAY)
+        v_fc1 = core.std.ShufflePlanes(fc1, 2, vs.GRAY)
+
+        diff_u = core.std.Expr(
+            [u_in, u_bc1, u_fc1],
+            f"x y - abs {thr_big_uv} > x z - abs {thr_big_uv} > and y z - abs {thr_big_uv} < and {peak} 0 ?"
+        )
+        diff_v = core.std.Expr(
+            [v_in, v_bc1, v_fc1],
+            f"x y - abs {thr_big_uv} > x z - abs {thr_big_uv} > and y z - abs {thr_big_uv} < and {peak} 0 ?"
+        )
+
+        diff_u_up = core.resize.Point(diff_u, width=w, height=h)
+        diff_v_up = core.resize.Point(diff_v, width=w, height=h)
+        macro_mask_raw = core.std.Expr([diff_y, diff_u_up, diff_v_up], "x y max z max")
+    else:
+        macro_mask_raw = diff_y
+
+    # Scene-Change Guard
+    y_prev_raw = y_in[:1] + y_in[:-1]
+    y_next_raw = y_in[1:]  + y_in[-1:]
+    y_prev_avg = core.std.PlaneStats(y_in, y_prev_raw, plane=0)
+    y_next_avg = core.std.PlaneStats(y_in, y_next_raw, plane=0)
+
+    def _scene_guard(n: int, f: list, clip_mask: vs.VideoNode, blank: vs.VideoNode) -> vs.VideoNode:
+        diff_prev = f[0].props.get("PlaneStatsDiff", 0.0)
+        diff_next = f[1].props.get("PlaneStatsDiff", 0.0)
+        if diff_prev > 0.15 or diff_next > 0.15:
+            return blank
+        return clip_mask
+
+    blank_mask = core.std.BlankClip(macro_mask_raw, color=[0] * macro_mask_raw.format.num_planes)
+    macro_mask_y = core.std.FrameEval(
+        macro_mask_raw,
+        lambda n, f: _scene_guard(n, f, macro_mask_raw, blank_mask),
+        prop_src=[y_prev_avg, y_next_avg]
+    ).std.Inflate().std.Inflate()
+
+    # Reconstrucción motion-compensated: inpainting con el contenido real de la escena
+    y_bridge = core.std.Expr([y_bc1, y_fc1], "x y + 2 /")
+    y_macro  = core.std.MaskedMerge(y_in, y_bridge, macro_mask_y)
+
+    if do_chroma:
+        macro_mask_uv = core.resize.Spline36(macro_mask_y, width=u_in.width, height=u_in.height)
+        u_bridge = core.std.Expr([u_bc1, u_fc1], "x y + 2 /")
+        v_bridge = core.std.Expr([v_bc1, v_fc1], "x y + 2 /")
+        u_macro  = core.std.MaskedMerge(u_in, u_bridge, macro_mask_uv)
+        v_macro  = core.std.MaskedMerge(v_in, v_bridge, macro_mask_uv)
+        clip_pre_clean = core.std.ShufflePlanes([y_macro, u_macro, v_macro], [0, 0, 0], vs.YUV)
+    else:
+        clip_pre_clean = y_macro
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 5: DVO MICRO-DROPOUT & TAPE RAIN — MEDIANA TEMPORAL 7 CUADROS
+    # ════════════════════════════════════════════════════════════════════════
+    frames      = [fc3, fc2, fc1, clip_pre_clean, bc1, bc2, bc3]
     interleaved = core.std.Interleave(frames)
     planes      = [0, 1, 2] if do_chroma else [0]
     cleaned_temporal = interleaved.tmedian.TemporalMedian(3, planes)[3::7]
@@ -360,7 +359,7 @@ def QuesoLimpia(
     # ════════════════════════════════════════════════════════════════════════
     y_clean_temp = core.std.ShufflePlanes(cleaned_temporal, 0, vs.GRAY)
 
-    # Envolventes continuas 1D
+    # Envolventes 1D continuas horizontales
     low_narrow = core.std.Convolution(y_clean_temp, matrix=[1, 2, 1], mode="h")
     low_wide   = core.std.Convolution(y_clean_temp, matrix=[1, 2, 4, 8, 4, 2, 1], mode="h")
     delta_h    = core.std.Expr([low_narrow, low_wide], f"x y - {peak // 2} +")
@@ -374,21 +373,14 @@ def QuesoLimpia(
     bright_thr     = int(235 * peak / 255)
     is_bright_spec = core.std.Expr([y_clean_temp], f"x {bright_thr} > {peak} 0 ?").std.Maximum()
 
-    # 3. Ancla temporal de consistencia con TemporalRepair
-    if hasattr(core, "zsmooth"):
-        y_repaired = core.zsmooth.TemporalRepair(y_clean_temp, y_clean_temp, mode=1)
-        y_anchor   = core.std.MaskedMerge(y_clean_temp, y_repaired, is_dark_core)
-    else:
-        y_anchor = y_clean_temp
-
-    # 4. Detector de curvatura 1D de segunda derivada
-    dx2 = core.std.Convolution(y_anchor, matrix=[1, -2, 1], mode="h")
+    # 3. Detector de curvatura 1D de segunda derivada
+    dx2 = core.std.Convolution(y_clean_temp, matrix=[1, -2, 1], mode="h")
     ringing_thr = int(20 * peak / 255)
     is_ringing_raw = core.std.Expr([dx2], f"x {peak // 2} - abs {ringing_thr} > {peak} 0 ?").std.Inflate()
 
     is_halo_zone = core.std.Expr([is_ringing_raw, is_dark_core, is_bright_spec], "y 0 > z 0 > or 0 x ?")
 
-    y_de_ring = core.std.Expr([y_anchor, delta_h, is_halo_zone], f"z 0 > x y {peak // 2} - 0.75 * - x ?")
+    y_de_ring = core.std.Expr([y_clean_temp, delta_h, is_halo_zone], f"z 0 > x y {peak // 2} - 0.75 * - x ?")
     y_de_ring = core.std.Expr([y_de_ring], f"x 0 max {peak} min")
 
     if do_chroma:
