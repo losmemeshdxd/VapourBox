@@ -253,12 +253,24 @@ def QuesoLimpia(
         bv1 = core.mv.Recalculate(sup_analyse, bv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
         fv1 = core.mv.Recalculate(sup_analyse, fv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
 
-        bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1)
-        fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1)
+        # thsad=400: si no hay un buen match de movimiento, NO compensa.
+        # Evita que Clense mezcle fondos incorrectos y deje marcas brillantes/oscuras.
+        bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1, thsad=400)
+        fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1, thsad=400)
 
         # Mediana temporal a lo largo de las trayectorias de movimiento
         planes_cln = [0, 1, 2] if do_chroma else [0]
-        clip_spotted = core.zsmooth.Clense(clip_ls, previous=bc1, next=fc1, planes=planes_cln)
+        cln = core.zsmooth.Clense(clip_ls, previous=bc1, next=fc1, planes=planes_cln)
+
+        # TemporalRepair mode=1: corrige residuos que Clense dejó comparando con el original.
+        # Solo toca los pixeles que son un outlier temporal estricto -> cero ghosting.
+        modes_tr = [1, 1, 1] if do_chroma else [1]
+        clip_tr = core.zsmooth.TemporalRepair(cln, clip_ls, mode=modes_tr, planes=planes_cln)
+
+        # Repair espacial mode=2: elimina cualquier marca/halo residual que quedó.
+        # Restringe cada pixel al rango de sus vecinos 3x3 en el original -> cero over-smooth.
+        modes_rp = [2, 2, 2] if do_chroma else [2]
+        clip_spotted = core.zsmooth.Repair(clip_tr, clip_ls, mode=modes_rp)
     else:
         clip_spotted = clip_ls
 
