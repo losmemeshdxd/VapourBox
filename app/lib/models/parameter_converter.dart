@@ -255,6 +255,13 @@ class ParameterConverter {
         _ => null,
       };
 
+  /// Read a double that may have come back from the UI as a string.
+  static double? _asDouble(dynamic value) => switch (value) {
+        num n => n.toDouble(),
+        String s => double.tryParse(s),
+        _ => null,
+      };
+
   /// Schema method id for a [DehaloMethod].
   static String dehaloMethodId(DehaloMethod method) => switch (method) {
         DehaloMethod.dehaloAlpha => 'dehalo_alpha',

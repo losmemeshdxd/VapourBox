@@ -176,6 +176,8 @@ class MainViewModel extends ChangeNotifier {
         return ParameterConverter.fromDeScratch(_processingPipeline.descratch);
       case 'spotless':
         return ParameterConverter.fromSpotLess(_processingPipeline.spotless);
+      case 'quesolimpia':
+        return ParameterConverter.fromQuesoLimpia(_processingPipeline.quesolimpia);
       case 'noise_reduction':
         return ParameterConverter.fromNoiseReduction(_processingPipeline.noiseReduction);
       case 'chroma_denoise':
@@ -233,6 +235,11 @@ class MainViewModel extends ChangeNotifier {
       case 'spotless':
         _processingPipeline = _processingPipeline.copyWith(
           spotless: ParameterConverter.toSpotLess(params),
+        );
+        break;
+      case 'quesolimpia':
+        _processingPipeline = _processingPipeline.copyWith(
+          quesolimpia: ParameterConverter.toQuesoLimpia(params),
         );
         break;
       case 'noise_reduction':
@@ -1092,6 +1099,8 @@ class MainViewModel extends ChangeNotifier {
         return 'descratch';
       case PassType.spotless:
         return 'spotless';
+      case PassType.quesolimpia:
+        return 'quesolimpia';
       case PassType.noiseReduction:
         return 'noise_reduction';
       case PassType.chromaDenoise:
