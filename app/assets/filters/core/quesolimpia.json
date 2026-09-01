@@ -54,7 +54,6 @@
         "off",
         "repair",
         "side_by_side",
-        "dropout_mask",
         "xcolor_mask"
       ],
       "ui": {
@@ -65,7 +64,6 @@
           "off": "Desactivado (Video restaurado)",
           "repair": "Ver Defectos Eliminados",
           "side_by_side": "Comparar Antes / Después",
-          "dropout_mask": "Ver Máscara de Dropouts (RF & Head Clogs)",
           "xcolor_mask": "Ver Corrección Cross-Color (Dot Crawl)"
         }
       }
