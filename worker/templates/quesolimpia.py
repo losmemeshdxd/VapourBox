@@ -263,8 +263,8 @@ def QuesoLimpia(
 
         rec_blk = max(4, blksize // 2)
         rec_ovl = rec_blk // 2
-        bv1 = core.mv.Recalculate(sup_analyse, bv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
-        fv1 = core.mv.Recalculate(sup_analyse, fv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+        bv1 = core.mv.Recalculate(sup_analyse, bv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+        fv1 = core.mv.Recalculate(sup_analyse, fv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
 
         bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1, thscd1=sc_th1, thscd2=sc_th2)
         fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1, thscd1=sc_th1, thscd2=sc_th2)
@@ -275,15 +275,15 @@ def QuesoLimpia(
         if temporal_radius >= 3:
             bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
-            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
-            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
             bc2 = core.mv.Compensate(clip_ls, sup_comp, bv2, thscd1=sc_th1, thscd2=sc_th2)
             fc2 = core.mv.Compensate(clip_ls, sup_comp, fv2, thscd1=sc_th1, thscd2=sc_th2)
 
             bv3 = core.mv.Analyse(sup_analyse, isb=True,  delta=3, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             fv3 = core.mv.Analyse(sup_analyse, isb=False, delta=3, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
-            bv3 = core.mv.Recalculate(sup_analyse, bv3, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
-            fv3 = core.mv.Recalculate(sup_analyse, fv3, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            bv3 = core.mv.Recalculate(sup_analyse, bv3, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+            fv3 = core.mv.Recalculate(sup_analyse, fv3, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
             bc3 = core.mv.Compensate(clip_ls, sup_comp, bv3, thscd1=sc_th1, thscd2=sc_th2)
             fc3 = core.mv.Compensate(clip_ls, sup_comp, fv3, thscd1=sc_th1, thscd2=sc_th2)
 
@@ -292,8 +292,8 @@ def QuesoLimpia(
         elif temporal_radius >= 2:
             bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
-            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
-            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
             bc2 = core.mv.Compensate(clip_ls, sup_comp, bv2, thscd1=sc_th1, thscd2=sc_th2)
             fc2 = core.mv.Compensate(clip_ls, sup_comp, fv2, thscd1=sc_th1, thscd2=sc_th2)
             interleaved = core.std.Interleave([fc2, fc1, clip_ls, bc1, bc2])
@@ -334,12 +334,12 @@ def QuesoLimpia(
 
             rec_d_blk = max(4, blksize // 2)
             rec_d_ovl = rec_d_blk // 2
-            bv1_d = core.mv.Recalculate(sup_clean, bv1_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
-            fv1_d = core.mv.Recalculate(sup_clean, fv1_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
-            bv2_d = core.mv.Recalculate(sup_clean, bv2_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
-            fv2_d = core.mv.Recalculate(sup_clean, fv2_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
-            bv3_d = core.mv.Recalculate(sup_clean, bv3_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
-            fv3_d = core.mv.Recalculate(sup_clean, fv3_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
+            bv1_d = core.mv.Recalculate(sup_clean, bv1_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False)
+            fv1_d = core.mv.Recalculate(sup_clean, fv1_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False)
+            bv2_d = core.mv.Recalculate(sup_clean, bv2_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False)
+            fv2_d = core.mv.Recalculate(sup_clean, fv2_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False)
+            bv3_d = core.mv.Recalculate(sup_clean, bv3_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False)
+            fv3_d = core.mv.Recalculate(sup_clean, fv3_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False)
 
             degrain_thsad = int(140 * (strength / 100.0))
             y_sp = core.std.ShufflePlanes(clip_spotted, 0, vs.GRAY)
