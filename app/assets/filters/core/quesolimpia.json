@@ -3,45 +3,27 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Limpieza profesional de polvo, manchas y puntitos",
-  "longDescription": "Elimina automáticamente polvo, suciedad, pelos y puntitos temporales sin afectar el movimiento ni los detalles de la imagen.",
+  "description": "Elimina automáticamente polvo, manchas y puntitos de VHS o película",
+  "longDescription": "Limpieza automática inteligente basada en compensación de movimiento y mediana temporal.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
   "dependencies": {
     "vs_plugins": [
       "libtemporalmedian.dll",
-      "libmvtools.dll",
-      "libtcanny.dll"
+      "libmvtools.dll"
     ]
   },
   "methods": [
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Limpieza inteligente de suciedad",
+      "description": "Limpieza automática",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
-        "mode",
         "strength",
         "threshold",
-        "showMask",
-        "spatialThreshold",
-        "minDustSize",
-        "maxDustSize",
-        "detectBright",
-        "detectDark",
-        "detectSpatial",
-        "detectStatic",
-        "grainSuppress",
-        "edgeProtect",
-        "sceneProtect",
-        "sceneThreshold",
-        "chroma",
-        "grainRestore",
-        "temporalRadius",
-        "blksize",
-        "pel"
+        "showMask"
       ]
     }
   ],
@@ -53,47 +35,28 @@
         "hidden": true
       }
     },
-    "mode": {
-      "type": "enum",
-      "default": "balanced",
-      "options": [
-        "gentle",
-        "balanced",
-        "aggressive"
-      ],
-      "ui": {
-        "label": "Modo de Limpieza",
-        "description": "Nivel de limpieza según el estado del material.",
-        "widget": "dropdown",
-        "optionLabels": {
-          "gentle": "Suave (Poco sucio / Cintas caseras)",
-          "balanced": "Estándar (Film / Telecine)",
-          "aggressive": "Fuerte (8mm / 16mm muy sucio)"
-        }
-      }
-    },
     "strength": {
       "type": "integer",
-      "default": 75,
+      "default": 80,
       "min": 10,
       "max": 100,
       "step": 5,
       "ui": {
         "label": "Fuerza de Limpieza",
-        "description": "Intensidad con la que se eliminan los puntos de polvo.",
+        "description": "Intensidad con la que se eliminan los puntos de suciedad.",
         "widget": "slider",
         "unit": "%"
       }
     },
     "threshold": {
       "type": "integer",
-      "default": 15,
-      "min": 5,
-      "max": 40,
+      "default": 12,
+      "min": 2,
+      "max": 30,
       "step": 1,
       "ui": {
-        "label": "Sensibilidad de Puntos",
-        "description": "Sensibilidad de detección (valores más bajos detectan puntos más tenues).",
+        "label": "Sensibilidad",
+        "description": "Sensibilidad de detección (menor número detecta puntos más pequeños).",
         "widget": "slider"
       }
     },
@@ -102,166 +65,16 @@
       "default": "off",
       "options": [
         "off",
-        "repair",
-        "side_by_side"
+        "repair"
       ],
       "ui": {
         "label": "Diagnóstico Visual",
-        "description": "Visualizar qué manchas están siendo detectadas.",
+        "description": "Ver en tiempo real los puntos detectados.",
         "widget": "dropdown",
         "optionLabels": {
           "off": "Desactivado (Video limpio)",
-          "repair": "Ver Manchas Detectadas (Rojo)",
-          "side_by_side": "Comparar Antes / Después"
+          "repair": "Ver Puntos Detectados (Rojo)"
         }
-      }
-    },
-    "spatialThreshold": {
-      "type": "integer",
-      "default": 15,
-      "min": 1,
-      "max": 40,
-      "ui": {
-        "advanced": true,
-        "label": "Sensibilidad Espacial"
-      }
-    },
-    "minDustSize": {
-      "type": "integer",
-      "default": 0,
-      "min": 0,
-      "max": 8,
-      "ui": {
-        "advanced": true,
-        "label": "Tamaño Mínimo de Punto"
-      }
-    },
-    "maxDustSize": {
-      "type": "integer",
-      "default": 16,
-      "min": 2,
-      "max": 64,
-      "ui": {
-        "advanced": true,
-        "label": "Tamaño Máximo de Mancha"
-      }
-    },
-    "detectBright": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "advanced": true,
-        "label": "Detectar Puntos Blancos"
-      }
-    },
-    "detectDark": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "advanced": true,
-        "label": "Detectar Puntos Negros"
-      }
-    },
-    "detectSpatial": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "advanced": true,
-        "label": "Detección Espacial"
-      }
-    },
-    "detectStatic": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "advanced": true,
-        "label": "Eliminar Pelos / Defectos Fijos"
-      }
-    },
-    "grainSuppress": {
-      "type": "integer",
-      "default": 30,
-      "min": 0,
-      "max": 100,
-      "ui": {
-        "advanced": true,
-        "label": "Supresión de Grano"
-      }
-    },
-    "edgeProtect": {
-      "type": "integer",
-      "default": 40,
-      "min": 0,
-      "max": 100,
-      "ui": {
-        "advanced": true,
-        "label": "Protección de Bordes"
-      }
-    },
-    "sceneProtect": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "advanced": true,
-        "label": "Proteger Cortes de Escena"
-      }
-    },
-    "sceneThreshold": {
-      "type": "float",
-      "default": 0.10,
-      "min": 0.01,
-      "max": 0.50,
-      "ui": {
-        "advanced": true,
-        "label": "Umbral de Cambio de Escena"
-      }
-    },
-    "chroma": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "advanced": true,
-        "label": "Limpiar Color / Croma"
-      }
-    },
-    "grainRestore": {
-      "type": "integer",
-      "default": 20,
-      "min": 0,
-      "max": 100,
-      "ui": {
-        "advanced": true,
-        "label": "Restaurar Grano Natural"
-      }
-    },
-    "temporalRadius": {
-      "type": "integer",
-      "default": 1,
-      "min": 1,
-      "max": 2,
-      "ui": {
-        "advanced": true,
-        "label": "Radio Temporal"
-      }
-    },
-    "blksize": {
-      "type": "integer",
-      "default": 16,
-      "min": 4,
-      "max": 64,
-      "ui": {
-        "advanced": true,
-        "label": "Tamaño de Bloque"
-      }
-    },
-    "pel": {
-      "type": "integer",
-      "default": 2,
-      "min": 1,
-      "max": 4,
-      "ui": {
-        "advanced": true,
-        "label": "Precisión Sub-píxel"
       }
     }
   }
