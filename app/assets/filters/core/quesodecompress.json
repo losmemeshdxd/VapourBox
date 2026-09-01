@@ -1,0 +1,112 @@
+{
+  "$schema": "https://vapourbox.app/schemas/filter-v1.json",
+  "id": "quesodecompress",
+  "version": "1.0.0",
+  "name": "QuesoDecompress",
+  "description": "Restauración de Compresión y Macroblocking estilo DVO Decompress",
+  "longDescription": "Motor profesional auto-calibrado para videos destruidos por compresión pesada (YouTube, streaming, bajo bitrate): elimina macrobloques (8x8/16x16), erradica el ruido mosquito, restaura degradados rotos (banding/posterización) y reconstruye el croma a 4:4:4 con blindaje quirúrgico de nitidez.",
+  "category": "cleanup",
+  "icon": "compress",
+  "order": 5,
+  "dependencies": {
+    "vs_plugins": [
+      "libdeblock.dll",
+      "libneo-f3kdb.dll"
+    ]
+  },
+  "methods": [
+    {
+      "id": "quesodecompress",
+      "name": "QuesoDecompress",
+      "description": "Eliminar Macroblocking, Banding y Ruido Mosquito",
+      "function": "quesodecompress.QuesoDecompress",
+      "parameters": [
+        "strength",
+        "deblock",
+        "deband",
+        "chroma_fix",
+        "anti_ring",
+        "showMask"
+      ]
+    }
+  ],
+  "parameters": {
+    "enabled": {
+      "type": "boolean",
+      "default": false,
+      "ui": {
+        "hidden": true
+      }
+    },
+    "strength": {
+      "type": "integer",
+      "default": 100,
+      "min": 10,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Fuerza de Descompresión",
+        "description": "Potencia de eliminación de bloques y restauración de degradados (100% = máxima restauración automática).",
+        "widget": "slider",
+        "unit": "%"
+      }
+    },
+    "deblock": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Eliminar Macrobloques (Deblocking)",
+        "description": "Erradica las costuras cuadradas de compresión DCT/MPEG/H.264.",
+        "widget": "switch"
+      }
+    },
+    "deband": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Reconstruir Degradados (Debanding)",
+        "description": "Elimina el escalonamiento de color y líneas de contorno en cielos, rostros y paredes.",
+        "widget": "switch"
+      }
+    },
+    "anti_ring": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Suprimir Ruido Mosquito (Anti-Ringing)",
+        "description": "Elimina el zumbido de compresión y artefactos Gibbs alrededor de bordes de alto contraste.",
+        "widget": "switch"
+      }
+    },
+    "chroma_fix": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Reconstruir Calidad de Croma (CCD 4:4:4)",
+        "description": "Restaura la precisión del color a calidad de estudio 4:4:4 eliminando el sangrado de compresión.",
+        "widget": "switch"
+      }
+    },
+    "showMask": {
+      "type": "enum",
+      "default": "off",
+      "options": [
+        "off",
+        "repair",
+        "side_by_side",
+        "edges_mask"
+      ],
+      "ui": {
+        "label": "Diagnóstico Visual",
+        "description": "Ver en tiempo real los defectos de compresión eliminados.",
+        "widget": "dropdown",
+        "optionLabels": {
+          "off": "Desactivado (Video restaurado)",
+          "repair": "Ver Artefactos de Compresión Eliminados",
+          "side_by_side": "Comparar Antes / Después",
+          "edges_mask": "Ver Blindaje de Bordes Quirúrgicos"
+        }
+      }
+    }
+  }
+}

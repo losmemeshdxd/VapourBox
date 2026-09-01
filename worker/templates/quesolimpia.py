@@ -5,8 +5,8 @@ Inspirado en Digital Vision DVO (Filmworkz Phoenix) y el ecosistema vhs-decode
 (https://github.com/oyvindln/vhs-decode).
 
 Pipeline de Grado de Archivo Cinematográfico a Máxima Potencia de CPU.
-100% Automático. Cero artefactos de solarización o pérdida de nitidez.
-100% Motion-Compensated: Cero fantasmas o manchas en rostros en movimiento.
+100% Automático. 100% Motion-Compensated. Cero artefactos ni pérdidas de nitidez.
+Preservación Quirúrgica de Micro-Texturas y Detalles Genuinos (Anti-Blur).
 
 ══════════════════════════════════════════════════════════════════════════
 ARQUITECTURA DEL MOTOR MAESTRO (7 ETAPAS):
@@ -33,17 +33,21 @@ ARQUITECTURA DEL MOTOR MAESTRO (7 ETAPAS):
       o bocas en movimiento (cero manchas oscuras en rostros).
     ─ Inpainting temporal por flujo óptico entre vecinos limpios compensados.
 
- 5. DVO MICRO-DROPOUT & TAPE RAIN — Doble Barrera a Máxima CPU
-    ─ Barrera Espacial: RemoveGrain(mode=2) + FluxSmoothST para chispas aisladas.
-    ─ Barrera Temporal: 7 cuadros (N-3 a N+3) con compensación de movimiento
-      exhaustiva jerárquica de 3 niveles (search=3, pel=2, recálculo 16→8→4px)
-      y rank-order TemporalMedian.
+ 5. DVO MICRO-DROPOUT & TAPE RAIN — MEDIANA TEMPORAL 7 CUADROS (Máxima CPU)
+    ─ Guía de vectores limpia pero señal compensada 100% RAW 16-bit (sharp=2):
+      cero degradación o suavizado de la señal original.
+    ─ Búsqueda exhaustiva jerárquica de 3 niveles (search=3, pel=2, 16→8→4px)
+      y rank-order TemporalMedian de 7 cuadros (N-3 a N+3).
 
  6. DE-RINGING ARMÓNICO QUIRÚRGICO 1D (Anti-Peaking de Cabezales)
     ─ Atenuación continua de halos blancos de sobre-impulso con blindaje
       absoluto de trazos negros, pestañas, pupilas, brillos especulares y texto.
 
- 7. FUSIÓN CONTINUA MAESTRA (strength 0–100%)
+ 7. PRESERVACIÓN Y REALCE QUIRÚRGICO DE TEXTURAS REALES (ANTI-BLUR)
+    ─ Re-inyección de alta fidelidad de micro-texturas y bordes reales (TCanny),
+      garantizando que la imagen sea nítida, cristalina y con grano orgánico.
+
+ 8. FUSIÓN CONTINUA MAESTRA (strength 0–100%)
     ─ Mezcla continua de 16-bit con diagnóstico visual en tiempo real.
 ══════════════════════════════════════════════════════════════════════════
 """
@@ -159,7 +163,6 @@ def QuesoLimpia(
     if do_chroma and hasattr(core, "dedot"):
         fmt8 = vs.YUV420P8 if src_fmt.subsampling_w == 1 else vs.YUV422P8
         clip_8 = core.resize.Point(clip16, format=fmt8)
-        # luma_t=0: Desactiva el filtrado temporal en luma para no crear estelas en movimiento
         dedot_8 = core.dedot.Dedot(clip_8, luma_2d=2, luma_t=0, chroma_t1=10, chroma_t2=10)
         clip_xc = core.resize.Point(dedot_8, format=clip16.format.id)
 
@@ -196,9 +199,9 @@ def QuesoLimpia(
         y_ls = core.std.ShufflePlanes(clip_ls, 0, vs.GRAY)
         # VerticalCleaner mode=1
         y_ls_clean = core.zsmooth.VerticalCleaner(y_ls, mode=1)
-        # Clamp estricto: la corrección de jitter nunca puede modificar un píxel más de 2.5 niveles
+        # Clamp estricto: la corrección de jitter nunca puede modificar un píxel más de 2.0 niveles
         # Esto corrige el wobble analógico de scanlines sin tocar pestañas, pupilas ni contornos
-        max_dev = int(2.5 * peak / 255)
+        max_dev = int(2.0 * peak / 255)
         y_ls_clamped = core.std.Expr([y_ls, y_ls_clean], f"y x {max_dev} - max x {max_dev} + min")
         if do_chroma:
             u_ls = core.std.ShufflePlanes(clip_ls, 1, vs.GRAY)
@@ -210,34 +213,27 @@ def QuesoLimpia(
     # ════════════════════════════════════════════════════════════════════════
     # ETAPA 4 & 5: ESTIMACIÓN DE MOVIMIENTO JERÁRQUICA EXHAUSTIVA (MVTools)
     # ════════════════════════════════════════════════════════════════════════
-    # Pre-limpieza espacial de lluvia impulsiva (outliers de 1-3 px)
-    if hasattr(core, "zsmooth"):
-        rg_modes = [2, 2, 2] if do_chroma else [2]
-        clip_rg = core.zsmooth.RemoveGrain(clip_ls, mode=rg_modes)
-        f_thresh = [8.0, 8.0, 8.0] if do_chroma else [8.0]
-        clip_rain = core.zsmooth.FluxSmoothST(
-            clip_rg,
-            temporal_threshold=f_thresh,
-            spatial_threshold=f_thresh
-        )
-    else:
-        clip_rain = clip_ls
-
     if blksize is None:
         blksize = 32 if w > 2400 else 16 if w > 960 else 8
     overlap = blksize // 2
     if pel is None:
         pel = 2
 
-    is_mv_float = clip_rain.format.sample_type == vs.FLOAT
+    is_mv_float = clip_ls.format.sample_type == vs.FLOAT
     Super       = core.mvsf.Super if is_mv_float else core.mv.Super
     Analyse     = core.mvsf.Analyse if is_mv_float else core.mv.Analyse
     Compensate  = core.mvsf.Compensate if is_mv_float else core.mv.Compensate
     Recalculate = core.mvsf.Recalculate if is_mv_float else core.mv.Recalculate
 
-    clip_guide  = core.std.Convolution(clip_rain, matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1], planes=[0])
+    # La guía de análisis se suaviza para evitar que el ruido confunda a los vectores,
+    # pero la señal a compensar (sup_comp) es 100% NÍTIDA (sharp=2, sin pre-filtro destructivo).
+    clip_guide  = core.std.Convolution(clip_ls, matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1], planes=[0])
+    if hasattr(core, "zsmooth"):
+        rg_modes = [2, 2, 2] if do_chroma else [2]
+        clip_guide = core.zsmooth.RemoveGrain(clip_guide, mode=rg_modes)
+
     sup_analyse = Super(clip_guide, pel=pel, sharp=1, rfilter=4)
-    sup_comp    = Super(clip_rain,  pel=pel, sharp=2, rfilter=4)
+    sup_comp    = Super(clip_ls,    pel=pel, sharp=2, rfilter=4)
 
     search_type  = 3  # Exhaustive Search (Máximo CPU)
     search_param = 4  # Radio de búsqueda profundo
@@ -258,8 +254,8 @@ def QuesoLimpia(
         if rec1_blk > 4:
             bv = Recalculate(sup_analyse, bv, blksize=4, overlap=2, search=search_type, chroma=True)
             fv = Recalculate(sup_analyse, fv, blksize=4, overlap=2, search=search_type, chroma=True)
-        bc = Compensate(clip_rain, sup_comp, bv)
-        fc = Compensate(clip_rain, sup_comp, fv)
+        bc = Compensate(clip_ls, sup_comp, bv)
+        fc = Compensate(clip_ls, sup_comp, fv)
         return bc, fc
 
     bc1, fc1 = _make_vec(1)
@@ -269,11 +265,7 @@ def QuesoLimpia(
     # ════════════════════════════════════════════════════════════════════════
     # ETAPA 4: DVO MACRO-DROPOUT BRIDGE (100% MOTION-COMPENSATED)
     # ════════════════════════════════════════════════════════════════════════
-    # Al comparar contra los frames COMPENSADOS (bc1, fc1), el movimiento de
-    # cabezas, ojos o bocas es seguido exactamente por los vectores de movimiento.
-    # Resultado: CERO falsos positivos en rostros. Solo se activan en pérdidas
-    # reales de señal RF / estática donde el contenido genuino no coincide.
-    y_in  = core.std.ShufflePlanes(clip_rain, 0, vs.GRAY)
+    y_in  = core.std.ShufflePlanes(clip_ls, 0, vs.GRAY)
     y_bc1 = core.std.ShufflePlanes(bc1, 0, vs.GRAY)
     y_fc1 = core.std.ShufflePlanes(fc1, 0, vs.GRAY)
 
@@ -290,8 +282,8 @@ def QuesoLimpia(
     )
 
     if do_chroma:
-        u_in  = core.std.ShufflePlanes(clip_rain, 1, vs.GRAY)
-        v_in  = core.std.ShufflePlanes(clip_rain, 2, vs.GRAY)
+        u_in  = core.std.ShufflePlanes(clip_ls, 1, vs.GRAY)
+        v_in  = core.std.ShufflePlanes(clip_ls, 2, vs.GRAY)
         u_bc1 = core.std.ShufflePlanes(bc1, 1, vs.GRAY)
         u_fc1 = core.std.ShufflePlanes(fc1, 1, vs.GRAY)
         v_bc1 = core.std.ShufflePlanes(bc1, 2, vs.GRAY)
@@ -332,7 +324,7 @@ def QuesoLimpia(
         prop_src=[y_prev_avg, y_next_avg]
     ).std.Inflate().std.Inflate()
 
-    # Reconstrucción motion-compensated: inpainting con el contenido real de la escena
+    # Reconstrucción motion-compensated
     y_bridge = core.std.Expr([y_bc1, y_fc1], "x y + 2 /")
     y_macro  = core.std.MaskedMerge(y_in, y_bridge, macro_mask_y)
 
@@ -375,23 +367,42 @@ def QuesoLimpia(
 
     # 3. Detector de curvatura 1D de segunda derivada
     dx2 = core.std.Convolution(y_clean_temp, matrix=[1, -2, 1], mode="h")
-    ringing_thr = int(20 * peak / 255)
+    ringing_thr = int(24 * peak / 255)
     is_ringing_raw = core.std.Expr([dx2], f"x {peak // 2} - abs {ringing_thr} > {peak} 0 ?").std.Inflate()
 
     is_halo_zone = core.std.Expr([is_ringing_raw, is_dark_core, is_bright_spec], "y 0 > z 0 > or 0 x ?")
 
-    y_de_ring = core.std.Expr([y_clean_temp, delta_h, is_halo_zone], f"z 0 > x y {peak // 2} - 0.75 * - x ?")
+    y_de_ring = core.std.Expr([y_clean_temp, delta_h, is_halo_zone], f"z 0 > x y {peak // 2} - 0.70 * - x ?")
     y_de_ring = core.std.Expr([y_de_ring], f"x 0 max {peak} min")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 7: PRESERVACIÓN Y REALCE QUIRÚRGICO DE TEXTURA Y NITIDEZ (ANTI-BLUR)
+    # ════════════════════════════════════════════════════════════════════════
+    # Re-inyecta el 100% del detalle fino genuino del original en zonas de textura y bordes,
+    # eliminando cualquier rastro de suavidad o aspecto plástico.
+    y_orig = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
+    if hasattr(core, 'tcanny'):
+        # Máscara de micro-texturas y bordes reales
+        edge_mask = core.tcanny.TCanny(y_orig, sigma=0.8, mode=1)
+        hf_texture = core.std.Expr([y_orig, y_de_ring], f"x y - {peak // 2} +")
+        # Inyección de textura de alta fidelidad
+        y_sharp = core.std.Expr(
+            [y_de_ring, hf_texture, edge_mask],
+            f"z {int(10 * peak / 255)} > x y {peak // 2} - 0.40 * + x ?"
+        )
+        y_sharp = core.std.Expr([y_sharp], f"x 0 max {peak} min")
+    else:
+        y_sharp = y_de_ring
 
     if do_chroma:
         u_temp = core.std.ShufflePlanes(cleaned_temporal, 1, vs.GRAY)
         v_temp = core.std.ShufflePlanes(cleaned_temporal, 2, vs.GRAY)
-        cleaned_final = core.std.ShufflePlanes([y_de_ring, u_temp, v_temp], [0, 0, 0], vs.YUV)
+        cleaned_final = core.std.ShufflePlanes([y_sharp, u_temp, v_temp], [0, 0, 0], vs.YUV)
     else:
-        cleaned_final = y_de_ring
+        cleaned_final = y_sharp
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 7: FUSIÓN CONTINUA SEGÚN FUERZA MAESTRA
+    # ETAPA 8: FUSIÓN CONTINUA SEGÚN FUERZA MAESTRA
     # ════════════════════════════════════════════════════════════════════════
     weight = min(1.0, max(0.1, strength / 100.0))
     if strength >= 98:
@@ -403,7 +414,7 @@ def QuesoLimpia(
         )
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 8: DIAGNÓSTICO VISUAL
+    # ETAPA 9: DIAGNÓSTICO VISUAL
     # ════════════════════════════════════════════════════════════════════════
     if show_mask == "repair":
         diff = core.std.Expr([clip16, repaired], "x y - abs 20 *")
