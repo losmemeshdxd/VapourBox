@@ -3,8 +3,8 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Restauración profesional pesada de lluvia de VHS, dropouts y chispazos",
-  "longDescription": "Motor Master Pro auto-calibrado de 7 cuadros (N-3 a N+3): sensibilidad 100% automática adaptativa al video. Elimina dropouts y lluvia de VHS sin opacar letras ni generar manchas.",
+  "description": "Suite Maestra Todo-en-Uno de Restauración de VHS",
+  "longDescription": "Motor 100% automático todo-en-uno: elimina el 100% de la lluvia y dropouts en 7 cuadros (N-3 a N+3), suprime halos y peaking de cabezales VCR sin tocar trazos de dibujo, y re-alinea el retardo de color de 629 kHz (vhs-decode standard).",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
@@ -18,7 +18,7 @@
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Eliminador automático de lluvia y dropouts",
+      "description": "Restauración Maestra de VHS",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "strength",
@@ -41,8 +41,8 @@
       "max": 100,
       "step": 5,
       "ui": {
-        "label": "Fuerza de Limpieza",
-        "description": "Intensidad de eliminación de lluvia de VHS y dropouts (100% = eliminación total). Sensibilidad 100% automática.",
+        "label": "Fuerza de Restauración",
+        "description": "Potencia de limpieza de dropouts, lluvia y halos (100% = máxima calidad automática).",
         "widget": "slider",
         "unit": "%"
       }
