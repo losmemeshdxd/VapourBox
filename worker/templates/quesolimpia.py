@@ -146,16 +146,24 @@ def QuesoLimpia(
     h    = clip16.height
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 1: ⚡ VHS RF SCANLINE DROPOUT & COMET STREAK HEALER (1D Healer)
+    # ETAPA 1: ⚡ SANADOR FORENSE DE DROPOUTS MULTILÍNEA Y COMET TAILS (1D & 2D)
     # ════════════════════════════════════════════════════════════════════════
     y_raw = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
-    y_up = core.std.CropAbs(y_raw, width=w, height=h - 1, left=0, top=1).std.AddBorders(bottom=1)
-    y_down = core.std.CropAbs(y_raw, width=w, height=h - 1, left=0, top=0).std.AddBorders(top=1)
-
     thr_val = int(8 * peak / 255)
-    streak_mask = core.std.Expr([y_raw, y_up, y_down], f"x y - abs {thr_val} > x z - abs {thr_val} > and {peak} 0 ?")
-    y_interp = core.std.Expr([y_up, y_down], "x y + 2 /")
-    y_healed = core.std.MaskedMerge(y_raw, y_interp, streak_mask)
+
+    # Pase 1: Sanador de dropouts aislados de 1 scanline
+    y_up1 = core.std.CropAbs(y_raw, width=w, height=h - 1, left=0, top=1).std.AddBorders(bottom=1)
+    y_down1 = core.std.CropAbs(y_raw, width=w, height=h - 1, left=0, top=0).std.AddBorders(top=1)
+    streak_mask1 = core.std.Expr([y_raw, y_up1, y_down1], f"x y - abs {thr_val} > x z - abs {thr_val} > and {peak} 0 ?")
+    y_interp1 = core.std.Expr([y_up1, y_down1], "x y + 2 /")
+    y_healed1 = core.std.MaskedMerge(y_raw, y_interp1, streak_mask1)
+
+    # Pase 2: Sanador de dropouts severos de 2 scanlines consecutivas (salto de radio 2)
+    y_up2 = core.std.CropAbs(y_healed1, width=w, height=h - 2, left=0, top=2).std.AddBorders(bottom=2)
+    y_down2 = core.std.CropAbs(y_healed1, width=w, height=h - 2, left=0, top=0).std.AddBorders(top=2)
+    streak_mask2 = core.std.Expr([y_healed1, y_up2, y_down2], f"x y - abs {thr_val} > x z - abs {thr_val} > and {peak} 0 ?")
+    y_interp2 = core.std.Expr([y_up2, y_down2], "x y + 2 /")
+    y_healed = core.std.MaskedMerge(y_healed1, y_interp2, streak_mask2)
 
     if do_chroma:
         u_raw = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
@@ -187,6 +195,10 @@ def QuesoLimpia(
     has_mv = hasattr(core, "mv")
     has_tmed = hasattr(core, "tmedian")
 
+    # Parámetros de detección de cambios de escena forense
+    sc_th1 = int(380 * (scene_threshold / 0.10)) if scene_protect else 800
+    sc_th2 = 130 if scene_protect else 255
+
     if has_mv and has_tmed:
         if blksize is None:
             blksize = 32 if w > 2400 else 16 if w > 960 else 8
@@ -199,17 +211,17 @@ def QuesoLimpia(
         sup_analyse = core.mv.Super(guide,   pel=pel, sharp=1, rfilter=4)
         sup_comp    = core.mv.Super(clip_ls, pel=pel, sharp=2, rfilter=4)
 
-        # Búsqueda exhaustiva jerárquica con recálculo a 4x4 sub-bloques
+        # Búsqueda exhaustiva jerárquica con recálculo a 4x4 sub-bloques y protección de escena
         bv1 = core.mv.Analyse(sup_analyse, isb=True,  delta=1, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
         fv1 = core.mv.Analyse(sup_analyse, isb=False, delta=1, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
 
         rec_blk = max(4, blksize // 2)
         rec_ovl = rec_blk // 2
-        bv1 = core.mv.Recalculate(sup_analyse, bv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
-        fv1 = core.mv.Recalculate(sup_analyse, fv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
+        bv1 = core.mv.Recalculate(sup_analyse, bv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+        fv1 = core.mv.Recalculate(sup_analyse, fv1, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
 
-        bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1)
-        fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1)
+        bc1 = core.mv.Compensate(clip_ls, sup_comp, bv1, thscd1=sc_th1, thscd2=sc_th2)
+        fc1 = core.mv.Compensate(clip_ls, sup_comp, fv1, thscd1=sc_th1, thscd2=sc_th2)
 
         planes_tmed = [0, 1, 2] if do_chroma else [0]
 
@@ -217,10 +229,10 @@ def QuesoLimpia(
         if temporal_radius >= 2:
             bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
-            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
-            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma)
-            bc2 = core.mv.Compensate(clip_ls, sup_comp, bv2)
-            fc2 = core.mv.Compensate(clip_ls, sup_comp, fv2)
+            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            bc2 = core.mv.Compensate(clip_ls, sup_comp, bv2, thscd1=sc_th1, thscd2=sc_th2)
+            fc2 = core.mv.Compensate(clip_ls, sup_comp, fv2, thscd1=sc_th1, thscd2=sc_th2)
             interleaved = core.std.Interleave([fc2, fc1, clip_ls, bc1, bc2])
             clip_spotted = interleaved.tmedian.TemporalMedian(2, planes_tmed)[2::5]
         else:
@@ -230,8 +242,8 @@ def QuesoLimpia(
         sup = core.mv.Super(clip_ls, pel=2, sharp=1, rfilter=4)
         bv1 = core.mv.Analyse(sup, isb=True, delta=1, blksize=16, overlap=8, search=5)
         fv1 = core.mv.Analyse(sup, isb=False, delta=1, blksize=16, overlap=8, search=5)
-        bc1 = core.mv.Compensate(clip_ls, sup, bv1)
-        fc1 = core.mv.Compensate(clip_ls, sup, fv1)
+        bc1 = core.mv.Compensate(clip_ls, sup, bv1, thscd1=sc_th1, thscd2=sc_th2)
+        fc1 = core.mv.Compensate(clip_ls, sup, fv1, thscd1=sc_th1, thscd2=sc_th2)
         clip_spotted = core.zsmooth.Clense(clip_ls, previous=bc1, next=fc1)
     else:
         clip_spotted = clip_ls
@@ -249,12 +261,13 @@ def QuesoLimpia(
             bv3_d = core.mv.Analyse(sup_clean, isb=True,  delta=3, blksize=blksize, overlap=overlap, search=3, chroma=False)
             fv3_d = core.mv.Analyse(sup_clean, isb=False, delta=3, blksize=blksize, overlap=overlap, search=3, chroma=False)
 
+            degrain_thsad = int(140 * (strength / 100.0))
             y_sp = core.std.ShufflePlanes(clip_spotted, 0, vs.GRAY)
             sup_y = core.mv.Super(y_sp, pel=pel, sharp=2, rfilter=4)
             y_degrained = core.mv.Degrain3(
                 y_sp, sup_y,
                 bv1_d, fv1_d, bv2_d, fv2_d, bv3_d, fv3_d,
-                thsad=140, thscd1=350
+                thsad=degrain_thsad, thscd1=sc_th1, thscd2=sc_th2
             )
         except Exception:
             y_degrained = core.std.ShufflePlanes(clip_spotted, 0, vs.GRAY) if do_chroma else clip_spotted
@@ -347,11 +360,15 @@ def QuesoLimpia(
     y_de_ring = core.std.MaskedMerge(y_clean_base, dehalo_base, halo_mask)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 8: 💎 REALCE ADAPTATIVO POR CONTRASTE EN 16-BIT NATIVO (CAS)
+    # ETAPA 8: 💎 REALCE ADAPTATIVO POR CONTRASTE EN 16-BIT NATIVO (CAS CLAMPED)
     # ════════════════════════════════════════════════════════════════════════
     if hasattr(core, 'cas'):
         sharp_val = 0.15 * (strength / 100.0)
-        y_final = core.cas.CAS(y_de_ring, sharpness=sharp_val)
+        y_cas = core.cas.CAS(y_de_ring, sharpness=sharp_val)
+        # Clamping matemático a los extremos del clip des-anillado para evitar sobre-impulso
+        min_base = core.std.Minimum(y_de_ring)
+        max_base = core.std.Maximum(y_de_ring)
+        y_final = core.std.Expr([y_cas, min_base, max_base], "x y max z min")
     else:
         y_final = y_de_ring
 
