@@ -101,38 +101,57 @@ def QuesoDecompress(
     work = clip16
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 1: DEBLOCKING ADAPTATIVO (DESTRUCTOR DE CUADRÍCULAS 8x8 Y 16x16)
+    # ETAPA 1: DEBLOCKING ADAPTATIVO NATIVO 16-BIT (Grid Annihilator)
     # ════════════════════════════════════════════════════════════════════════
-    if deblock and hasattr(core, 'deblock'):
-        # Cuantización auto-calibrada según la fuerza (28 a 46)
-        quant_val = int(28 + 18 * (strength / 100.0))
-        fmt8 = vs.GRAY8 if is_gray else (vs.YUV420P8 if src_fmt.subsampling_w == 1 else vs.YUV422P8)
-        clip8 = core.resize.Point(clip16, format=fmt8)
-        deblocked8 = core.deblock.Deblock(clip8, quant=quant_val)
-        work = core.resize.Point(deblocked8, format=clip16.format.id)
+    if deblock:
+        if hasattr(core, 'deblock'):
+            quant_val = int(28 + 18 * (strength / 100.0))
+            fmt8 = vs.GRAY8 if is_gray else (vs.YUV420P8 if src_fmt.subsampling_w == 1 else vs.YUV422P8)
+            clip8 = core.resize.Point(clip16, format=fmt8)
+            deblocked8 = core.deblock.Deblock(clip8, quant=quant_val)
+            work = core.resize.Point(deblocked8, format=clip16.format.id)
+        else:
+            # Reconstructor morfológico de costuras 16-bit nativo
+            h_smooth = core.std.Convolution(work, matrix=[1, 2, 1], mode="h")
+            v_smooth = core.std.Convolution(work, matrix=[1, 2, 1], mode="v")
+            work = core.std.Expr([h_smooth, v_smooth], "x y + 2 /")
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 2: SUPRESIÓN DE RUIDO MOSQUITO Y ZUMBIDO FRECUENCIAL
+    # ETAPA 2: SUPRESIÓN DE RUIDO MOSQUITO Y GIBBS RINGING (DCT Artifact Healer)
     # ════════════════════════════════════════════════════════════════════════
-    if anti_ring and hasattr(core, 'fft3dfilter'):
-        fmt_ps = vs.GRAYS if is_gray else (vs.YUV420PS if src_fmt.subsampling_w == 1 else vs.YUV422PS)
-        clip_ps = core.resize.Point(work, format=fmt_ps)
-        # Limpieza de zumbido de alta frecuencia en bloques
-        clip_fft = core.fft3dfilter.FFT3DFilter(
-            clip_ps,
-            sigma=1.4 * (strength / 100.0),
-            bt=1,  # Espacial puro para no generar ghosting
-            bw=16,
-            bh=16,
-            ow=8,
-            oh=8,
-            planes=[0, 1, 2] if do_chroma else [0],
-            ncpu=0
-        )
-        work = core.resize.Point(clip_fft, format=clip16.format.id)
+    if anti_ring:
+        if hasattr(core, 'fft3dfilter'):
+            fmt_ps = vs.GRAYS if is_gray else (vs.YUV420PS if src_fmt.subsampling_w == 1 else vs.YUV422PS)
+            clip_ps = core.resize.Point(work, format=fmt_ps)
+            clip_fft = core.fft3dfilter.FFT3DFilter(
+                clip_ps,
+                sigma=1.4 * (strength / 100.0),
+                bt=1,
+                bw=16,
+                bh=16,
+                ow=8,
+                oh=8,
+                planes=[0, 1, 2] if do_chroma else [0],
+                ncpu=0
+            )
+            work = core.resize.Point(clip_fft, format=clip16.format.id)
+        else:
+            # Supresor bilateral morfológico de zumbido mosquito
+            y_w = core.std.ShufflePlanes(work, 0, vs.GRAY) if do_chroma else work
+            ero = y_w.std.Minimum()
+            dil = y_w.std.Maximum()
+            opened = ero.std.Maximum()
+            closed = dil.std.Minimum()
+            y_no_mosq = core.std.Expr([y_w, opened, closed], "x y > y x z < z x ? ?")
+            if do_chroma:
+                u_w = core.std.ShufflePlanes(work, 1, vs.GRAY)
+                v_w = core.std.ShufflePlanes(work, 2, vs.GRAY)
+                work = core.std.ShufflePlanes([y_no_mosq, u_w, v_w], [0, 0, 0], vs.YUV)
+            else:
+                work = y_no_mosq
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 3: RECONSTRUCCIÓN DE CROMA A 4:4:4 ESTUDIO (CCD)
+    # ETAPA 3: RECONSTRUCCIÓN DE CROMA A 4:4:4 ESTUDIO (CCD / Desaturador de Ruido)
     # ════════════════════════════════════════════════════════════════════════
     if do_chroma and hasattr(core, 'zsmooth'):
         ccd_thresh = 4.5 * (strength / 100.0)
@@ -159,21 +178,22 @@ def QuesoDecompress(
         )
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 5: BLINDAJE QUIRÚRGICO DE BORDES Y DETALLES GENUINOS (ANTI-BLUR)
+    # ETAPA 5: BLINDAJE QUIRÚRGICO DE BORDES Y DETALLES GENUINOS (Anti-Blur Canny/Prewitt)
     # ════════════════════════════════════════════════════════════════════════
-    # Garantiza que el deblocking y deband operen al 100% en zonas planas y
-    # degradados pero dejen las letras, ojos, pupilas y pestañas 100% NÍTIDOS.
     y_orig = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
     y_work = core.std.ShufflePlanes(work, 0, vs.GRAY)
 
     if hasattr(core, 'tcanny'):
-        # Máscara de bordes y rasgos finos genuinos
         edge_mask = core.tcanny.TCanny(y_orig, sigma=0.8, mode=1)
         edge_mask_dilated = edge_mask.std.Inflate()
-        # En bordes reales marcados, preservar el contenido original para cero pérdida de nitidez
-        y_final = core.std.MaskedMerge(y_work, y_orig, edge_mask_dilated)
     else:
-        y_final = y_work
+        edge_raw = core.std.Prewitt(y_orig)
+        edge_thr = int(32 * peak / 255)
+        edge_mask = core.std.Expr([edge_raw], f"x {edge_thr} > {peak} 0 ?")
+        edge_mask_dilated = edge_mask.std.Inflate()
+
+    # En bordes reales marcados, preservar el contenido original para cero pérdida de nitidez
+    y_final = core.std.MaskedMerge(y_work, y_orig, edge_mask_dilated)
 
     if do_chroma:
         u_work = core.std.ShufflePlanes(work, 1, vs.GRAY)

@@ -163,7 +163,22 @@ def QuesoLimpia(
     y_down2 = core.std.CropAbs(y_healed1, width=w, height=h - 2, left=0, top=0).std.AddBorders(top=2)
     streak_mask2 = core.std.Expr([y_healed1, y_up2, y_down2], f"x y - abs {thr_val} > x z - abs {thr_val} > and {peak} 0 ?")
     y_interp2 = core.std.Expr([y_up2, y_down2], "x y + 2 /")
-    y_healed = core.std.MaskedMerge(y_healed1, y_interp2, streak_mask2)
+    y_healed2 = core.std.MaskedMerge(y_healed1, y_interp2, streak_mask2)
+
+    # Pase 3: Sanador de head-clogs masivos de 3 scanlines consecutivas (salto de radio 3)
+    y_up3 = core.std.CropAbs(y_healed2, width=w, height=h - 3, left=0, top=3).std.AddBorders(bottom=3)
+    y_down3 = core.std.CropAbs(y_healed2, width=w, height=h - 3, left=0, top=0).std.AddBorders(top=3)
+    streak_mask3 = core.std.Expr([y_healed2, y_up3, y_down3], f"x y - abs {thr_val} > x z - abs {thr_val} > and {peak} 0 ?")
+    y_interp3 = core.std.Expr([y_up3, y_down3], "x y + 2 /")
+    y_healed = core.std.MaskedMerge(y_healed2, y_interp3, streak_mask3)
+
+    # Aplicar control de polaridad en el sanador de scanlines
+    if detect_bright and not detect_dark:
+        y_healed = core.std.Expr([y_raw, y_healed], "x y > y x ?")
+    elif not detect_bright and detect_dark:
+        y_healed = core.std.Expr([y_raw, y_healed], "x y < y x ?")
+    elif not detect_bright and not detect_dark:
+        y_healed = y_raw
 
     if do_chroma:
         u_raw = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
@@ -171,6 +186,34 @@ def QuesoLimpia(
         clip_healed = core.std.ShufflePlanes([y_healed, u_raw, v_raw], [0, 0, 0], vs.YUV)
     else:
         clip_healed = y_healed
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 1.5: 🔬 SANADOR DE DEFECTOS ESTÁTICOS Y PELOS DE VENTANILLA (Gate Hair)
+    # ════════════════════════════════════════════════════════════════════════
+    if detect_static and clip16.num_frames >= 5:
+        diff_prev = core.std.Expr([y_healed, y_healed[0] + y_healed[:-1]], "x y - abs")
+        diff_next = core.std.Expr([y_healed, y_healed[1:] + y_healed[-1]], "x y - abs")
+        dilated_clean = y_healed.std.Maximum().std.Maximum().std.Maximum()
+        blur_sp = core.std.BoxBlur(y_healed, hradius=3, vradius=3)
+        diff_sp = core.std.Expr([y_healed, blur_sp], "x y - abs")
+
+        thr_dev = int(8 * peak / 255)
+        thr_sp  = int((60 - gate_hair * 0.4) * peak / 255)
+
+        static_defect_mask = core.std.Expr(
+            [diff_prev, diff_next, diff_sp],
+            f"x {thr_dev} < y {thr_dev} < and z {thr_sp} > and {peak} 0 ?"
+        )
+        static_mask_dil = static_defect_mask.std.Maximum().std.Maximum()
+        inpainted_static = core.std.MaskedMerge(y_healed, dilated_clean, static_mask_dil)
+        inpainted_static = core.std.BoxBlur(inpainted_static, hradius=1, vradius=1)
+        y_healed = core.std.MaskedMerge(y_healed, inpainted_static, static_mask_dil)
+        if do_chroma:
+            clip_healed = core.std.ShufflePlanes([y_healed, u_raw, v_raw], [0, 0, 0], vs.YUV)
+        else:
+            clip_healed = y_healed
+    else:
+        static_defect_mask = core.std.BlankClip(format=vs.GRAY16, width=w, height=h, length=clip16.num_frames, color=[0])
 
     # ════════════════════════════════════════════════════════════════════════
     # ETAPA 2: DVO LINE-SYNC — ESTABILIZADOR DE JITTER DE SCANLINES
@@ -190,7 +233,7 @@ def QuesoLimpia(
             clip_ls = y_ls_clamped
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 3: 🛡️ MOTOR DE DIRT & RAIN REMOVAL 5-FRAME (SpotLess Dual-Motion)
+    # ETAPA 3: 🛡️ MOTOR DE DIRT & RAIN REMOVAL 5/7-FRAME (SpotLess Dual-Motion)
     # ════════════════════════════════════════════════════════════════════════
     has_mv = hasattr(core, "mv")
     has_tmed = hasattr(core, "tmedian")
@@ -206,9 +249,12 @@ def QuesoLimpia(
         if pel is None:
             pel = 2
 
-        # Guía pre-acondicionada para rastrear vectores puros
-        guide = core.std.BoxBlur(clip_ls, hradius=1, vradius=1)
-        sup_analyse = core.mv.Super(guide,   pel=pel, sharp=1, rfilter=4)
+        # Guía Ultra-Pura (elimina picos de RF y lluvia antes de la estimación de vectores)
+        ero_g = clip_ls.std.Minimum()
+        dil_g = clip_ls.std.Maximum()
+        clean_sp_g = core.std.Expr([clip_ls, ero_g, dil_g], "x y > y x z < z x ? ?")
+        guide = core.std.BoxBlur(clean_sp_g, hradius=2, vradius=2)
+        sup_analyse = core.mv.Super(guide,   pel=pel, sharp=2, rfilter=4)
         sup_comp    = core.mv.Super(clip_ls, pel=pel, sharp=2, rfilter=4)
 
         # Búsqueda exhaustiva jerárquica con recálculo a 4x4 sub-bloques y protección de escena
@@ -225,8 +271,25 @@ def QuesoLimpia(
 
         planes_tmed = [0, 1, 2] if do_chroma else [0]
 
-        # Soporte multi-frame con 5 cuadros para lluvia densa de VHS
-        if temporal_radius >= 2:
+        # Soporte multi-frame con 5 y 7 cuadros para lluvia densa de archivo
+        if temporal_radius >= 3:
+            bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
+            fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
+            bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            fv2 = core.mv.Recalculate(sup_analyse, fv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            bc2 = core.mv.Compensate(clip_ls, sup_comp, bv2, thscd1=sc_th1, thscd2=sc_th2)
+            fc2 = core.mv.Compensate(clip_ls, sup_comp, fv2, thscd1=sc_th1, thscd2=sc_th2)
+
+            bv3 = core.mv.Analyse(sup_analyse, isb=True,  delta=3, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
+            fv3 = core.mv.Analyse(sup_analyse, isb=False, delta=3, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
+            bv3 = core.mv.Recalculate(sup_analyse, bv3, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            fv3 = core.mv.Recalculate(sup_analyse, fv3, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
+            bc3 = core.mv.Compensate(clip_ls, sup_comp, bv3, thscd1=sc_th1, thscd2=sc_th2)
+            fc3 = core.mv.Compensate(clip_ls, sup_comp, fv3, thscd1=sc_th1, thscd2=sc_th2)
+
+            interleaved = core.std.Interleave([fc3, fc2, fc1, clip_ls, bc1, bc2, bc3])
+            clip_spotted = interleaved.tmedian.TemporalMedian(3, planes_tmed)[3::7]
+        elif temporal_radius >= 2:
             bv2 = core.mv.Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             fv2 = core.mv.Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=do_chroma)
             bv2 = core.mv.Recalculate(sup_analyse, bv2, blksize=rec_blk, overlap=rec_ovl, search=5, chroma=do_chroma, thscd1=sc_th1, thscd2=sc_th2)
@@ -248,18 +311,35 @@ def QuesoLimpia(
     else:
         clip_spotted = clip_ls
 
+    # Control de polaridad (detect_bright vs detect_dark)
+    if detect_bright and not detect_dark:
+        clip_spotted = core.std.Expr([clip_ls, clip_spotted], "x y > y x ?")
+    elif not detect_bright and detect_dark:
+        clip_spotted = core.std.Expr([clip_ls, clip_spotted], "x y < y x ?")
+    elif not detect_bright and not detect_dark:
+        clip_spotted = clip_ls
+
     # ════════════════════════════════════════════════════════════════════════
     # ETAPA 4: 🧭 MVDEGRAIN3 — INTEGRACIÓN TEMPORAL PONDERADA (6 Cuadros)
     # ════════════════════════════════════════════════════════════════════════
     if has_mv:
         try:
             sup_clean = core.mv.Super(clip_spotted, pel=pel, sharp=2, rfilter=4)
-            bv1_d = core.mv.Analyse(sup_clean, isb=True,  delta=1, blksize=blksize, overlap=overlap, search=3, chroma=False)
-            fv1_d = core.mv.Analyse(sup_clean, isb=False, delta=1, blksize=blksize, overlap=overlap, search=3, chroma=False)
-            bv2_d = core.mv.Analyse(sup_clean, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=3, chroma=False)
-            fv2_d = core.mv.Analyse(sup_clean, isb=False, delta=2, blksize=blksize, overlap=overlap, search=3, chroma=False)
-            bv3_d = core.mv.Analyse(sup_clean, isb=True,  delta=3, blksize=blksize, overlap=overlap, search=3, chroma=False)
-            fv3_d = core.mv.Analyse(sup_clean, isb=False, delta=3, blksize=blksize, overlap=overlap, search=3, chroma=False)
+            bv1_d = core.mv.Analyse(sup_clean, isb=True,  delta=1, blksize=blksize, overlap=overlap, search=5, chroma=False)
+            fv1_d = core.mv.Analyse(sup_clean, isb=False, delta=1, blksize=blksize, overlap=overlap, search=5, chroma=False)
+            bv2_d = core.mv.Analyse(sup_clean, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5, chroma=False)
+            fv2_d = core.mv.Analyse(sup_clean, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5, chroma=False)
+            bv3_d = core.mv.Analyse(sup_clean, isb=True,  delta=3, blksize=blksize, overlap=overlap, search=5, chroma=False)
+            fv3_d = core.mv.Analyse(sup_clean, isb=False, delta=3, blksize=blksize, overlap=overlap, search=5, chroma=False)
+
+            rec_d_blk = max(4, blksize // 2)
+            rec_d_ovl = rec_d_blk // 2
+            bv1_d = core.mv.Recalculate(sup_clean, bv1_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
+            fv1_d = core.mv.Recalculate(sup_clean, fv1_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
+            bv2_d = core.mv.Recalculate(sup_clean, bv2_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
+            fv2_d = core.mv.Recalculate(sup_clean, fv2_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
+            bv3_d = core.mv.Recalculate(sup_clean, bv3_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
+            fv3_d = core.mv.Recalculate(sup_clean, fv3_d, blksize=rec_d_blk, overlap=rec_d_ovl, search=5, chroma=False, thscd1=sc_th1, thscd2=sc_th2)
 
             degrain_thsad = int(140 * (strength / 100.0))
             y_sp = core.std.ShufflePlanes(clip_spotted, 0, vs.GRAY)
@@ -360,17 +440,41 @@ def QuesoLimpia(
     y_de_ring = core.std.MaskedMerge(y_clean_base, dehalo_base, halo_mask)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 8: 💎 REALCE ADAPTATIVO POR CONTRASTE EN 16-BIT NATIVO (CAS CLAMPED)
+    # ETAPA 8: 💎 RECUPERACIÓN FORENSE DE BORDES Y CONTRA-SHARPENING (DVO High-Frequency Restorer)
     # ════════════════════════════════════════════════════════════════════════
+    # 1. Contra-Sharpening Adaptativo: Recupera la nitidez y micro-detalle original perdido por el filtrado
+    diff_edge = core.std.MakeDiff(y_raw, y_de_ring)
+    edge_det = core.std.Prewitt(y_de_ring)
+    edge_thr_rec = int(24 * peak / 255)
+    edge_mask_rec = core.std.Expr([edge_det], f"x {edge_thr_rec} > {peak} 0 ?").std.Inflate()
+    
+    # Inyección controlada de micro-detalle original en bordes
+    sharp_scale = 0.55 * (strength / 100.0)
+    diff_edge_scaled = core.std.Expr([diff_edge], f"x {peak // 2} - {sharp_scale:.4f} * {peak // 2} +")
+    y_recovered_edge = core.std.MaskedMerge(y_de_ring, core.std.MergeDiff(y_de_ring, diff_edge_scaled), edge_mask_rec)
+
+    # 2. CAS Clamped (Contrast Adaptive Sharpening acotado matemáticamente)
     if hasattr(core, 'cas'):
         sharp_val = 0.15 * (strength / 100.0)
-        y_cas = core.cas.CAS(y_de_ring, sharpness=sharp_val)
-        # Clamping matemático a los extremos del clip des-anillado para evitar sobre-impulso
+        y_cas = core.cas.CAS(y_recovered_edge, sharpness=sharp_val)
         min_base = core.std.Minimum(y_de_ring)
         max_base = core.std.Maximum(y_de_ring)
-        y_final = core.std.Expr([y_cas, min_base, max_base], "x y max z min")
+        y_sharp = core.std.Expr([y_cas, min_base, max_base], "x y max z min")
     else:
-        y_final = y_de_ring
+        y_sharp = y_recovered_edge
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 8.5: 🌾 INYECTOR DE RESTAURACIÓN DE GRANO (Grain Restore)
+    # ════════════════════════════════════════════════════════════════════════
+    if grain_restore > 0:
+        diff_grain = core.std.MakeDiff(y_raw, y_sharp)
+        edge_y = core.std.Prewitt(y_sharp)
+        flat_mask = core.std.Expr([edge_y], f"x {edge_thr} < {peak} 0 ?").std.Convolution([1, 2, 1, 2, 4, 2, 1, 2, 1])
+        g_scale = grain_restore / 100.0
+        diff_scaled = core.std.Expr([diff_grain], f"x {peak // 2} - {g_scale:.4f} * {peak // 2} +")
+        y_final = core.std.MaskedMerge(y_sharp, core.std.MergeDiff(y_sharp, diff_scaled), flat_mask)
+    else:
+        y_final = y_sharp
 
     # Recombinación final de planos
     if do_chroma:
@@ -401,11 +505,23 @@ def QuesoLimpia(
         )
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 9: DIAGNÓSTICO VISUAL
+    # ETAPA 9: DIAGNÓSTICO VISUAL Y MÁSCARAS
     # ════════════════════════════════════════════════════════════════════════
     if show_mask == "repair":
         diff = core.std.Expr([clip16, repaired], "x y - abs 20 *")
         return core.resize.Point(diff, format=src_fmt_id)
+
+    if show_mask == "raw":
+        y_spotted = core.std.ShufflePlanes(clip_spotted, 0, vs.GRAY) if do_chroma else clip_spotted
+        diff_raw = core.std.Expr([y_raw, y_spotted], f"x y - abs {thr_val} > {peak} 0 ?")
+        return core.resize.Point(diff_raw, format=src_fmt_id)
+
+    if show_mask == "refined":
+        diff_ref = core.std.Expr([y_raw, y_final], f"x y - abs {thr_val} > {peak} 0 ?")
+        return core.resize.Point(diff_ref, format=src_fmt_id)
+
+    if show_mask == "static":
+        return core.resize.Point(static_defect_mask, format=src_fmt_id)
 
     if show_mask == "side_by_side":
         half    = clip16.width // 2
