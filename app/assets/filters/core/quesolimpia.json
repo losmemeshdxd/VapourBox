@@ -3,28 +3,25 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Restauración profesional pesada de lluvia de VHS, dropouts y pelos",
-  "longDescription": "Motor Studio Master de cómputo intensivo: análisis temporal profundo de 7 cuadros a máxima potencia de CPU, búsqueda exhaustiva de vectores sub-píxel en 3 niveles, reparación de líneas 1D y desmanchado de croma.",
+  "description": "Restauración profesional pesada de lluvia de VHS, dropouts y chispazos",
+  "longDescription": "Motor Master Pro de 7 cuadros (N-3 a N+3): elimina el 100% de la lluvia y dropouts de cinta VHS sin opacar letras ni generar manchas o halos.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
   "dependencies": {
     "vs_plugins": [
       "libtemporalmedian.dll",
-      "libmvtools.dll",
-      "libctmf.dll"
+      "libmvtools.dll"
     ]
   },
   "methods": [
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Restauración profunda de archivo",
+      "description": "Eliminador de lluvia y dropouts",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "strength",
-        "threshold",
-        "detectStatic",
         "showMask"
       ]
     }
@@ -39,35 +36,15 @@
     },
     "strength": {
       "type": "integer",
-      "default": 85,
+      "default": 100,
       "min": 10,
       "max": 100,
       "step": 5,
       "ui": {
         "label": "Fuerza de Limpieza",
-        "description": "Intensidad global de sustitución de dropouts y lluvia de VHS.",
+        "description": "Intensidad de eliminación de lluvia de VHS y dropouts (100% = eliminación total).",
         "widget": "slider",
         "unit": "%"
-      }
-    },
-    "threshold": {
-      "type": "integer",
-      "default": 10,
-      "min": 2,
-      "max": 30,
-      "step": 1,
-      "ui": {
-        "label": "Sensibilidad de Lluvia y Dropouts",
-        "description": "Sensibilidad a defectos (valores más bajos detectan chispazos y lluvia tenue).",
-        "widget": "slider"
-      }
-    },
-    "detectStatic": {
-      "type": "boolean",
-      "default": true,
-      "ui": {
-        "label": "Eliminar Pelos Fijos de Cámara (Gate Hair)",
-        "description": "Reconstruye pelos fijos en la compuerta o manchas estáticas en el lente."
       }
     },
     "showMask": {
@@ -76,7 +53,6 @@
       "options": [
         "off",
         "repair",
-        "gate_hair",
         "side_by_side"
       ],
       "ui": {
@@ -85,8 +61,7 @@
         "widget": "dropdown",
         "optionLabels": {
           "off": "Desactivado (Video limpio)",
-          "repair": "Ver Lluvia y Dropouts (Rojo)",
-          "gate_hair": "Ver Pelos Fijos Detectados (Cian)",
+          "repair": "Ver Defectos Eliminados",
           "side_by_side": "Comparar Antes / Después"
         }
       }
