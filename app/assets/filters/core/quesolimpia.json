@@ -53,16 +53,20 @@
       "options": [
         "off",
         "repair",
-        "side_by_side"
+        "side_by_side",
+        "dropout_mask",
+        "xcolor_mask"
       ],
       "ui": {
         "label": "Diagnóstico Visual",
         "description": "Ver en tiempo real los defectos que están siendo restaurados.",
         "widget": "dropdown",
         "optionLabels": {
-          "off": "Desactivado (Video limpio)",
+          "off": "Desactivado (Video restaurado)",
           "repair": "Ver Defectos Eliminados",
-          "side_by_side": "Comparar Antes / Después"
+          "side_by_side": "Comparar Antes / Después",
+          "dropout_mask": "Ver Máscara de Dropouts (RF & Head Clogs)",
+          "xcolor_mask": "Ver Corrección Cross-Color (Dot Crawl)"
         }
       }
     }
