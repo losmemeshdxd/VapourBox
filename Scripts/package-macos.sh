@@ -156,7 +156,10 @@ if [ "$SKIP_BUILD" = false ]; then
     export VAPOURBOX_ARCHS="$XCODE_ARCHS"
 
     cd "$PROJECT_ROOT/app"
+    flutter precache --macos
     flutter pub get
+    dart run build_runner build --delete-conflicting-outputs
+    flutter build macos --release || true
 
     # Clean and reinstall CocoaPods
     echo "    Reinstalling CocoaPods..."

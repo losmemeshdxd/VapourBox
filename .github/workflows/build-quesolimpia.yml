@@ -21,6 +21,7 @@ jobs:
       - name: Disable Swift Package Manager in Flutter
         run: |
           flutter config --no-enable-swift-package-manager
+          flutter precache --macos
 
       - name: Setup CocoaPods
         run: |
