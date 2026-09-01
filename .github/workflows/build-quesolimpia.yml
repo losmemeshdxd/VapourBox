@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-macos:
-    runs-on: macos-15
+    runs-on: macos-15  # Apple Silicon (macOS 15 runner with Xcode)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,6 +17,14 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      - name: Disable Swift Package Manager in Flutter
+        run: |
+          flutter config --no-enable-swift-package-manager
+
+      - name: Setup CocoaPods
+        run: |
+          gem install cocoapods
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -28,34 +36,67 @@ jobs:
           cd worker
           cargo build --release --target aarch64-apple-darwin
 
-      - name: Build Flutter app (ARM64)
+      - name: Build Flutter macOS App (Two-step xcodebuild with CocoaPods)
+        env:
+          VAPOURBOX_ARCHS: arm64
+          VAPOURBOX_DEPLOYMENT_TARGET: "15.0"
+          MACOSX_DEPLOYMENT_TARGET: "15.0"
         run: |
           cd app
           flutter pub get
           dart run build_runner build --delete-conflicting-outputs
-          flutter build macos --release
 
-      - name: Assemble VapourBox App Bundle
+          # Generate ephemeral Flutter macOS files
+          flutter build macos --release || true
+
+          # Clean and install CocoaPods
+          cd macos
+          rm -rf Pods Podfile.lock
+          pod install
+
+          # Build Pods-Runner scheme
+          xcodebuild -workspace Runner.xcworkspace -scheme Pods-Runner \
+              -configuration Release build ONLY_ACTIVE_ARCH=NO \
+              ARCHS="arm64" \
+              MACOSX_DEPLOYMENT_TARGET="15.0" \
+              -quiet
+
+          # Build Runner scheme
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner \
+              -configuration Release build ONLY_ACTIVE_ARCH=NO \
+              ARCHS="arm64" \
+              MACOSX_DEPLOYMENT_TARGET="15.0" \
+              -quiet
+
+          # Locate built .app
+          DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "vapourbox.app" -o -name "VapourBox.app" 2>/dev/null | head -1)
+          if [ -z "$DERIVED_APP" ]; then
+              DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" 2>/dev/null | head -1)
+          fi
+          echo "Found built app at: $DERIVED_APP"
+
+          mkdir -p ../build/macos/Build/Products/Release
+          cp -R "$DERIVED_APP" ../build/macos/Build/Products/Release/VapourBox.app
+
+      - name: Assemble VapourBox Bundle with QuesoLimpia
         run: |
           APP_PATH="app/build/macos/Build/Products/Release/VapourBox.app"
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find app/build/macos -name "*.app" | head -n 1)
-          fi
-          echo "Found app at: $APP_PATH"
-          
+          echo "Assembling bundle at $APP_PATH"
+
           # Inject updated Rust worker
           cp worker/target/aarch64-apple-darwin/release/vapourbox-worker "$APP_PATH/Contents/MacOS/vapourbox-worker"
-          
-          # Inject templates and quesolimpia.py
+          chmod +x "$APP_PATH/Contents/MacOS/vapourbox-worker"
+
+          # Inject templates including quesolimpia.py
           mkdir -p "$APP_PATH/Contents/Resources/templates"
           cp -R worker/templates/* "$APP_PATH/Contents/Resources/templates/"
-          
-          # Create zip artifact
-          cd "$(dirname "$APP_PATH")"
-          zip -r -y VapourBox-macOS-arm64-QuesoLimpia.zip "$(basename "$APP_PATH")"
+
+          # Package as Zip
+          cd app/build/macos/Build/Products/Release
+          zip -r -y VapourBox-macOS-arm64-QuesoLimpia.zip VapourBox.app
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: VapourBox-macOS-arm64-QuesoLimpia
-          path: app/build/macos/**/VapourBox-macOS-arm64-QuesoLimpia.zip
+          path: app/build/macos/Build/Products/Release/VapourBox-macOS-arm64-QuesoLimpia.zip
