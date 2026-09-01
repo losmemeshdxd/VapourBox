@@ -3,8 +3,8 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Suite Maestra Todo-en-Uno de Restauración de VHS",
-  "longDescription": "Motor 100% automático todo-en-uno: elimina el 100% de la lluvia y dropouts en 7 cuadros (N-3 a N+3), suprime halos y peaking de cabezales VCR sin tocar trazos de dibujo, y re-alinea el retardo de color de 629 kHz (vhs-decode standard).",
+  "description": "Suite Maestra de Restauración de VHS (Dropouts, Halos y Color)",
+  "longDescription": "Motor profesional auto-calibrado: erradica dropouts en 7 cuadros sin opacar letras, suprime halos y peaking de cabezales VCR sin tocar trazos de dibujo, y re-alinea el retardo de color de 629 kHz (vhs-decode).",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
@@ -22,6 +22,8 @@
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "strength",
+        "dehalo",
+        "chromaShift",
         "showMask"
       ]
     }
@@ -41,10 +43,36 @@
       "max": 100,
       "step": 5,
       "ui": {
-        "label": "Fuerza de Restauración",
-        "description": "Potencia de limpieza de dropouts, lluvia y halos (100% = máxima calidad automática).",
+        "label": "Fuerza de Limpieza (Lluvia y Dropouts)",
+        "description": "Intensidad de erradicación de puntos blancos/negros y lluvia de cinta en 7 cuadros (100% = limpieza total).",
         "widget": "slider",
         "unit": "%"
+      }
+    },
+    "dehalo": {
+      "type": "integer",
+      "default": 80,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Fuerza de DeHalo (Anti-Peaking)",
+        "description": "Suprime los halos blancos y rebotes de los bordes causados por los cabezales del VCR con blindaje de trazos.",
+        "widget": "slider",
+        "unit": "%"
+      }
+    },
+    "chromaShift": {
+      "type": "number",
+      "default": 1.5,
+      "min": 0.0,
+      "max": 3.0,
+      "step": 0.25,
+      "ui": {
+        "label": "Alineación de Color (Chroma Shift)",
+        "description": "Desplaza el color a la izquierda para compensar el retardo analógico de 629 kHz (estilo vhs-decode).",
+        "widget": "slider",
+        "unit": "px"
       }
     },
     "showMask": {

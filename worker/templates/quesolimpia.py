@@ -1,22 +1,11 @@
 """
-QuesoLimpia ALL-IN-ONE — Suite Maestra Automática de Restauración de VHS
-========================================================================
-Integra todo el pipeline de restauración en 1 solo motor 100% automático:
-
-1. RE-ALINEACIÓN DE RETARDO DE CROMA (Estilo vhs-decode):
-   Compensa el desfase de fase de 629 kHz (Color-Under) centrando el color
-   sub-píxel horizontalmente dentro de los contornos del dibujo.
-
-2. ERRADICACIÓN DE DROPOUTS Y LLUVIA TEMPORAL (7 Cuadros N-3 a N+3):
-   Destruye el 100% de puntos, chispazos y lluvia de cinta sin opacar letras,
-   textos o logos (la 'A' de TAXI y detalles finos se conservan 100% intactos).
-
-3. DE-HALO Y ANTI-PEAKING ANALÓGICO (Doble Envolvente Morfológica 1D):
-   Elimina los halos blancos de sobre-impulso (overshoot) y surcos oscuros (undershoot)
-   de los cabezales del VCR con blindaje total del trazo negro interior.
-
-4. FUSIÓN CONTINUA DE 16-BIT:
-   Cero parches, cero manchas, cero degradación de imagen.
+QuesoLimpia ALL-IN-ONE — Suite Maestra de Restauración de VHS
+=============================================================
+Controles Maestros:
+1. strength      : Fuerza de eliminación de lluvia y dropouts de cinta (10% - 100%).
+2. dehalo        : Fuerza de supresión de halos blancos y peaking analógico (0% - 100%).
+3. chroma_shift  : Desplazamiento horizontal de croma para corregir retardo de 629 kHz (0 a 3.0 px).
+4. show_mask     : Diagnóstico visual (off, repair, dehalo, side_by_side).
 """
 
 import vapoursynth as vs
@@ -27,6 +16,8 @@ core = vs.core
 def QuesoLimpia(
     clip:              vs.VideoNode,
     strength:          int   = 100,
+    dehalo:            int   = 80,
+    chroma_shift:      float = 1.5,
     show_mask:         str   = "off",
     # Parámetros internos auto-calibrados
     threshold:         int   = 10,
@@ -54,7 +45,7 @@ def QuesoLimpia(
     **kwargs,
 ) -> vs.VideoNode:
     """
-    QuesoLimpia All-in-One — Restaurador maestro automático para VHS y cinta analógica.
+    QuesoLimpia All-in-One — Restaurador maestro para VHS y cinta analógica.
     """
     if clip.format is None:
         raise vs.Error("QuesoLimpia: el clip debe tener formato constante.")
@@ -67,7 +58,7 @@ def QuesoLimpia(
     bits_in    = src_fmt.bits_per_sample
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 1: CONVERSIÓN A 16-BIT PARA MÁXIMA PRECISIÓN MATEMÁTICA
+    # ETAPA 1: TRABAJO EN 16-BIT PARA CERO BANDING
     # ════════════════════════════════════════════════════════════════════════
     if is_float or bits_in < 16:
         if is_gray:
@@ -83,14 +74,14 @@ def QuesoLimpia(
     # ════════════════════════════════════════════════════════════════════════
     # ETAPA 2: RE-ALINEACIÓN DE RETARDO DE CROMA (LECCIÓN VHS-DECODE)
     # ════════════════════════════════════════════════════════════════════════
-    if do_chroma:
+    if do_chroma and chroma_shift > 0.0:
         y_plane = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
         u_plane = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
         v_plane = core.std.ShufflePlanes(clip16, 2, vs.GRAY)
 
         # Corregir el retraso de ~600ns del filtro de 629 kHz desplazando croma a la izquierda
-        u_aligned = core.resize.Spline36(u_plane, src_left=1.5)
-        v_aligned = core.resize.Spline36(v_plane, src_left=1.5)
+        u_aligned = core.resize.Spline36(u_plane, src_left=chroma_shift)
+        v_aligned = core.resize.Spline36(v_plane, src_left=chroma_shift)
 
         clip16 = core.std.ShufflePlanes([y_plane, u_aligned, v_aligned], [0, 0, 0], vs.YUV)
 
@@ -109,7 +100,6 @@ def QuesoLimpia(
     Compensate  = core.mvsf.Compensate if is_float else core.mv.Compensate
     Recalculate = core.mvsf.Recalculate if is_float else core.mv.Recalculate
 
-    # Guía temporal pre-suavizada: limpia ruido de cinta para calcular vectores exactos
     clip_guide  = core.std.Convolution(clip16, matrix=[1,2,1, 2,4,2, 1,2,1], planes=[0])
     sup_analyse = Super(clip_guide, pel=pel, sharp=1, rfilter=4)
     sup_comp    = Super(clip16,     pel=pel, sharp=2, rfilter=4)
@@ -147,77 +137,81 @@ def QuesoLimpia(
     fc3 = Compensate(clip16, sup_comp, fv3)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 4: MEDIANA TEMPORAL CONTINUA DE 7 CUADROS (DROPOUT OBLITERATOR)
+    # ETAPA 4: MEDIANA TEMPORAL DE 7 CUADROS (LLUVIA Y DROPOUTS)
     # ════════════════════════════════════════════════════════════════════════
     frames = [fc3, fc2, fc1, clip16, bc1, bc2, bc3]
     interleaved = core.std.Interleave(frames)
     planes = [0, 1, 2] if do_chroma else [0]
     cleaned_temporal = interleaved.tmedian.TemporalMedian(3, planes)[3::7]
 
-    # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 5: DE-HALO ANALÓGICO 1D (ANTI-PEAKING Y REBOTE DE VCR)
-    # ════════════════════════════════════════════════════════════════════════
-    y_in = core.std.ShufflePlanes(cleaned_temporal, 0, vs.GRAY)
-
-    # 1. Envolvente superior (Apertura Morfológica: elimina picos blancos)
-    r = 7
-    y_min = y_in
-    for _ in range(r):
-        y_min = y_min.std.Minimum(planes=[0])
-    upper_bound = y_min
-    for _ in range(r):
-        upper_bound = upper_bound.std.Maximum(planes=[0])
-
-    # 2. Envolvente inferior (Cierre Morfológico: rellena valles oscuros)
-    y_max = y_in
-    for _ in range(r):
-        y_max = y_max.std.Maximum(planes=[0])
-    lower_bound = y_max
-    for _ in range(r):
-        lower_bound = lower_bound.std.Minimum(planes=[0])
-
-    # 3. Clamping suave de sobre-impulsos analógicos
-    thr_dehalo = int(4 * peak / 255)
-    y_dehalo_clamped = core.std.Expr(
-        [y_in, lower_bound, upper_bound],
-        f"x z {thr_dehalo} + > z {thr_dehalo} + x y {thr_dehalo} - < y {thr_dehalo} - x ? ?"
-    )
-
-    # 4. Blindaje estricto de trazos negros y líneas finas
-    edge_core = core.std.Expr([y_in], f"x {int(40 * peak / 255)} < {peak} 0 ?").std.Inflate()
-    diff_halo = core.std.Expr([y_in, upper_bound, lower_bound], "x y - abs x z - abs max")
-    halo_zone = core.std.Expr(
-        [diff_halo, edge_core],
-        f"y {peak // 2} > 0 x {int(10 * peak / 255)} > {peak} 0 ? ?"
-    )
-
-    y_dehalo = core.std.MaskedMerge(y_in, y_dehalo_clamped, halo_zone)
-
-    if do_chroma:
-        u_in = core.std.ShufflePlanes(cleaned_temporal, 1, vs.GRAY)
-        v_in = core.std.ShufflePlanes(cleaned_temporal, 2, vs.GRAY)
-        cleaned_final = core.std.ShufflePlanes([y_dehalo, u_in, v_in], [0, 0, 0], vs.YUV)
-    else:
-        cleaned_final = y_dehalo
-
-    # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 6: FUSIÓN PONDERADA CONTINUA (CERO MANCHAS / CERO PARCHES)
-    # ════════════════════════════════════════════════════════════════════════
-    weight = min(1.0, max(0.1, strength / 100.0))
-
+    # Fusión suave según slider de fuerza de lluvia
+    w_clean = min(1.0, max(0.0, strength / 100.0))
     if strength >= 98:
-        repaired = cleaned_final
+        y_temporal = cleaned_temporal
+    elif strength <= 0:
+        y_temporal = clip16
     else:
-        repaired = core.std.Expr(
-            [clip16, cleaned_final],
-            f"x {1.0 - weight:.4f} * y {weight:.4f} * +"
+        y_temporal = core.std.Expr(
+            [clip16, cleaned_temporal],
+            f"x {1.0 - w_clean:.4f} * y {w_clean:.4f} * +"
         )
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 7: DIAGNÓSTICO VISUAL
+    # ETAPA 5: DE-HALO Y ANTI-PEAKING ANALÓGICO 1D
+    # ════════════════════════════════════════════════════════════════════════
+    if dehalo > 0:
+        y_in = core.std.ShufflePlanes(y_temporal, 0, vs.GRAY)
+
+        # 1. Envolvente superior (Apertura Morfológica: elimina picos blancos)
+        r = 7
+        y_min = y_in
+        for _ in range(r):
+            y_min = y_min.std.Minimum(planes=[0])
+        upper_bound = y_min
+        for _ in range(r):
+            upper_bound = upper_bound.std.Maximum(planes=[0])
+
+        # 2. Envolvente inferior (Cierre Morfológico: rellena valles oscuros)
+        y_max = y_in
+        for _ in range(r):
+            y_max = y_max.std.Maximum(planes=[0])
+        lower_bound = y_max
+        for _ in range(r):
+            lower_bound = lower_bound.std.Minimum(planes=[0])
+
+        # 3. Clamping suave
+        thr_dehalo = int(4 * peak / 255)
+        y_dehalo_clamped = core.std.Expr(
+            [y_in, lower_bound, upper_bound],
+            f"x z {thr_dehalo} + > z {thr_dehalo} + x y {thr_dehalo} - < y {thr_dehalo} - x ? ?"
+        )
+
+        # 4. Blindaje estricto de trazos negros y líneas finas
+        edge_core = core.std.Expr([y_in], f"x {int(40 * peak / 255)} < {peak} 0 ?").std.Inflate()
+        diff_halo = core.std.Expr([y_in, upper_bound, lower_bound], "x y - abs x z - abs max")
+        halo_zone = core.std.Expr(
+            [diff_halo, edge_core],
+            f"y {peak // 2} > 0 x {int(10 * peak / 255)} > {peak} 0 ? ?"
+        )
+
+        w_dehalo = min(1.0, max(0.0, dehalo / 100.0))
+        y_dehalo_blended = core.std.Expr([y_in, y_dehalo_clamped], f"x {1.0 - w_dehalo:.4f} * y {w_dehalo:.4f} * +")
+        y_dehalo = core.std.MaskedMerge(y_in, y_dehalo_blended, halo_zone)
+
+        if do_chroma:
+            u_in = core.std.ShufflePlanes(y_temporal, 1, vs.GRAY)
+            v_in = core.std.ShufflePlanes(y_temporal, 2, vs.GRAY)
+            repaired = core.std.ShufflePlanes([y_dehalo, u_in, v_in], [0, 0, 0], vs.YUV)
+        else:
+            repaired = y_dehalo
+    else:
+        repaired = y_temporal
+
+    # ════════════════════════════════════════════════════════════════════════
+    # ETAPA 6: DIAGNÓSTICO VISUAL
     # ════════════════════════════════════════════════════════════════════════
     if show_mask == "repair":
-        diff = core.std.Expr([clip16, cleaned_final], "x y - abs 20 *")
+        diff = core.std.Expr([clip16, repaired], "x y - abs 20 *")
         return core.resize.Point(diff, format=src_fmt_id)
 
     if show_mask == "side_by_side":
