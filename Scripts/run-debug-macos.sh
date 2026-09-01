@@ -84,11 +84,10 @@ cp -R "$DERIVED_APP" "$DEBUG_APP"
 # Copy worker binary
 cp "$WORKER_DIR/target/debug/vapourbox-worker" "$DEBUG_APP/Contents/MacOS/"
 
-# Copy templates (includes pipe_source.py used by VapourSynth scripts)
+# Copy templates (includes pipe_source.py and all filter modules used by VapourSynth scripts)
 mkdir -p "$DEBUG_APP/Contents/MacOS/templates"
 cp "$WORKER_DIR/templates/"*.vpy "$DEBUG_APP/Contents/MacOS/templates/"
-cp "$WORKER_DIR/templates/pipe_source.py" "$DEBUG_APP/Contents/MacOS/templates/"
-cp "$WORKER_DIR/templates/spotless.py" "$DEBUG_APP/Contents/MacOS/templates/"
+cp "$WORKER_DIR/templates/"*.py "$DEBUG_APP/Contents/MacOS/templates/"
 
 # Always strip quarantine from deps. macOS SIGKILLs quarantined binaries
 # (ffmpeg/ffprobe/vspipe) on exec, which surfaces as opaque "Failed to run

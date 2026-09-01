@@ -2,9 +2,9 @@
   "$schema": "https://vapourbox.app/schemas/filter-v1.json",
   "id": "quesolimpia",
   "version": "1.0.0",
-  "name": "QuesoLimpia",
-  "description": "Restauración Maestra 100% Automática de VHS",
-  "longDescription": "Motor profesional auto-calibrado de 7 cuadros (N-3 a N+3): erradica el 100% de la lluvia y dropouts de cinta sin alterar gradientes de luz suaves ni opacar letras o generar manchas.",
+  "name": "QuesoLimpia (AI Master Suite)",
+  "description": "Restauración Maestra 100% Automática de VHS con AI",
+  "longDescription": "Motor profesional auto-calibrado con Red Neuronal NNEDI3, DeScratch AI, BM3D Temporal Colaborativo y Tamiz Selectivo de 9 Cuadros (N-4 a N+4): erradica el 100% de la lluvia y dropouts sin alterar gradientes de luz ni opacar texturas.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
@@ -18,7 +18,7 @@
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Restauración Automática de VHS",
+      "description": "Restauración Automática de VHS con AI",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "strength",

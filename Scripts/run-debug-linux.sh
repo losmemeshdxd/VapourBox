@@ -83,8 +83,7 @@ cp "$WORKER_DIR/target/debug/vapourbox-worker" "$BUNDLE_DIR/"
 # Copy templates
 mkdir -p "$BUNDLE_DIR/templates"
 cp "$WORKER_DIR/templates/"*.vpy "$BUNDLE_DIR/templates/"
-cp "$WORKER_DIR/templates/pipe_source.py" "$BUNDLE_DIR/templates/"
-cp "$WORKER_DIR/templates/spotless.py" "$BUNDLE_DIR/templates/"
+cp "$WORKER_DIR/templates/"*.py "$BUNDLE_DIR/templates/"
 
 echo "==> Launching VapourBox (debug)..."
 "$BUNDLE_DIR/vapourbox" &
