@@ -1,28 +1,25 @@
 """
-QuesoLimpia ULTRA — El Santo Grial de la Restauración de Video Analógico y VHS
-==============================================================================
-Arquitectura de 5 motores acoplados de grado archivístico:
+QuesoLimpia STUDIO MASTER — Motor de Restauración Pesada de VHS y Cinta Magnética
+==================================================================================
+Diseñado para cómputo intensivo de CPU (estándar de laboratorio Phoenix DVO / DIAMANT):
 
-1. MOTOR DE DEMODULACIÓN 1D (FM Streak & Horizontal Line Healer):
-   Detecta y repara líneas de demodulación FM rasgadas, chispazos horizontales
-   y colas de cometa sin destruir los trazos finos del dibujo.
+1. ANÁLISIS TEMPORAL PROFUNDO MULTI-CUADRO (Hasta 7/9 cuadros compensados):
+   Para lluvia densa, dropouts continuos y pérdida severa de portadora RF en VHS.
 
-2. MOTOR TEMPORAL BIDIRECCIONAL JERÁRQUICO (Adaptive 5-Frame Temporal Median):
-   Compensación de movimiento sobre guía pre-filtrada (DVO PHAME standard)
-   con recálculo fino de sub-píxel para cero fantasmas en movimiento rápido.
+2. BÚSQUEDA EXHAUSTIVA DE VECTORES EN 3 NIVELES (Hierarchical Multi-Pass MVTools):
+   - Nivel 1: Macro-movimiento de cámara (bloques 16x16 / 32x32).
+   - Nivel 2: Movimiento de objetos y personajes (bloques 8x8 con búsqueda exhaustiva).
+   - Nivel 3: Micro-recálculo de bordes finos y trazos de dibujo (bloques 4x4).
 
-3. RECUPERADOR DE LÍNEAS DE CABEZAL (Head-Switching Bottom 5% Recovery):
-   Restaura las líneas inferiores dañadas por la conmutación de cabezal
-   rescatando los píxeles reales de cuadros adyacentes sin recortar imagen.
+3. GUÍA TEMPORAL DE ALTA COHERENCIA PRE-FILTRADA:
+   El ruido de cinta analógica se neutraliza antes de la estimación de vectores,
+   pero la compensación final se realiza sobre el máster original de 16-bit sin pérdida.
 
-4. TRATAMIENTO ORTOGONAL DE LUMA Y CROMA (Color-Under Comet-Tail Suppressor):
-   Desacoplamiento total de Y, U y V con umbrales independientes para erradicar
-   el sangrado de color y ruido cromático de 629 kHz sin tocar la nitidez.
+4. SUPRESIÓN ASIMÉTRICA DE COMET-TAILS EN CROMA (Color-Under 629 kHz):
+   Limpieza ortogonal del canal de color para eliminar el arrastre de croma de VHS.
 
-5. EXTRACTOR DE DEFECTOS ESTÁTICOS (Gate Hair & Static Inpainter):
-   Aislamiento en 3 cuadros consecutivos y reconstrucción espacial CTMF.
-
-TODO PROCESADO EN ESPACIO NATIVO DE 16-BIT PARA CERO DEGRADACIÓN.
+5. INPAINTING TRILATERAL ESPACIAL (CTMF) PARA DEFECTOS PERSISTENTES (Gate Hair):
+   Reconstrucción de pérdidas de señal que duran múltiples cuadros sin difuminar.
 """
 
 import vapoursynth as vs
@@ -34,10 +31,10 @@ def QuesoLimpia(
     clip:              vs.VideoNode,
     strength:          int   = 85,
     threshold:         int   = 10,
-    temporal_radius:   int   = 1,
+    temporal_radius:   int   = 2,
     detect_static:     bool  = True,
     show_mask:         str   = "off",
-    # Parámetros heredados para compatibilidad total con el worker
+    # ── Parámetros de compatibilidad total ──────────────────────────
     mode:              str   = "balanced",
     spatial_threshold: int   = 15,
     min_dust_size:     int   = 0,
@@ -54,12 +51,21 @@ def QuesoLimpia(
     blksize:           int | None = None,
     pel:               int | None = None,
     gate_hair:         int   = 50,
-    radius:            int   = 1,
+    radius:            int   = 2,
     rec:               bool  = True,
+    exhaustive_search: bool  = True,
     **kwargs,
 ) -> vs.VideoNode:
     """
-    QuesoLimpia Ultra — Máxima calidad de laboratorio para cintas VHS y Film.
+    QuesoLimpia Studio Master — Motor de CPU pesada para restauración de archivo.
+
+    Controles de Usuario:
+    ---------------------
+    strength        : 10-100% (Fuerza global de limpieza).
+    threshold       : 2-30    (Sensibilidad a dropouts y lluvia de VHS).
+    temporal_radius : 1-3     (1 = 3 cuadros, 2 = 5 cuadros, 3 = 7 cuadros para daño severo).
+    detect_static   : True    (Eliminación de pelos de compuerta y defectos fijos).
+    show_mask       : "off" / "repair" / "gate_hair" / "side_by_side"
     """
     if clip.format is None:
         raise vs.Error("QuesoLimpia: el clip debe tener formato constante.")
@@ -71,10 +77,11 @@ def QuesoLimpia(
     do_chroma  = (not is_gray) and chroma
     bits_in    = src_fmt.bits_per_sample
 
-    use_delta2 = max(temporal_radius, radius) >= 2
+    # Radio temporal efectivo (soporta 1 = 3 cuadros, 2 = 5 cuadros, 3 = 7 cuadros)
+    t_rad = max(1, min(3, max(temporal_radius, radius)))
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 1: ALTA PROFUNDIDAD INTERNA (16-BIT NATIVO)
+    # 1. ESPACIO DE TRABAJO EN 16-BIT PARA CERO BANDING
     # ════════════════════════════════════════════════════════════════════════
     if is_float or bits_in < 16:
         if is_gray:
@@ -87,83 +94,100 @@ def QuesoLimpia(
 
     peak = (1 << 16) - 1
 
-    # Calibración dinámica de umbrales
+    # Escalado de umbrales adaptativos a 16-bit
     strength_scale = strength / 80.0
     thr_luma   = int(threshold * peak / 255.0 / strength_scale)
     thr_chroma = int(threshold * 3.5 * peak / 255.0 / strength_scale)
     thr_streak = int(max(4, threshold * 0.7) * peak / 255.0 / strength_scale)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 2: ANÁLISIS DE MOVIMIENTO DE ALTA FIDELIDAD (GUÍA PRE-FILTRADA)
+    # 2. BÚSQUEDA EXHAUSTIVA MULTI-PASO DE ALTA CARGA DE CPU
     # ════════════════════════════════════════════════════════════════════════
     w = clip16.width
     if blksize is None:
         blksize = 32 if w > 2400 else 16 if w > 960 else 8
     overlap = blksize // 2
     if pel is None:
-        pel = 2
+        pel = 2  # Precisión sub-píxel
 
     Super       = core.mvsf.Super if is_float else core.mv.Super
     Analyse     = core.mvsf.Analyse if is_float else core.mv.Analyse
     Compensate  = core.mvsf.Compensate if is_float else core.mv.Compensate
     Recalculate = core.mvsf.Recalculate if is_float else core.mv.Recalculate
 
-    # Guía pre-suavizada para que el ruido de cinta no distorsione los vectores
+    # Guía temporal pre-suavizada con filtro bi-lateral suave
+    # Elimina el ruido analógico para que los vectores sigan la escena real
     clip_guide  = core.std.Convolution(clip16, matrix=[1,2,1, 2,4,2, 1,2,1], planes=[0])
     sup_analyse = Super(clip_guide, pel=pel, sharp=1, rfilter=4)
     sup_comp    = Super(clip16,     pel=pel, sharp=2, rfilter=4)
 
-    # Vectores Delta 1 con Recálculo Jerárquico Fino
-    bv1 = Analyse(sup_analyse, isb=True,  delta=1, blksize=blksize, overlap=overlap, search=5)
-    fv1 = Analyse(sup_analyse, isb=False, delta=1, blksize=blksize, overlap=overlap, search=5)
+    # Configuración de búsqueda: search=3 (Exhaustive) para máxima precisión
+    search_type = 3 if exhaustive_search else 5
+    search_param = 3 if exhaustive_search else 2
 
-    rec_blksize = max(4, blksize // 2)
-    rec_overlap = rec_blksize // 2
-    bv1 = Recalculate(sup_analyse, bv1, blksize=rec_blksize, overlap=rec_overlap, search=5)
-    fv1 = Recalculate(sup_analyse, fv1, blksize=rec_blksize, overlap=rec_overlap, search=5)
+    # ── Delta 1 (Cuadros N-1 y N+1) con Doble Recalculate Fino ─────────────
+    bv1 = Analyse(sup_analyse, isb=True,  delta=1, blksize=blksize, overlap=overlap, search=search_type, searchparam=search_param)
+    fv1 = Analyse(sup_analyse, isb=False, delta=1, blksize=blksize, overlap=overlap, search=search_type, searchparam=search_param)
+
+    # Recalculate Nivel 2 (bloques a la mitad)
+    rec1_blk = max(4, blksize // 2)
+    rec1_ovl = rec1_blk // 2
+    bv1 = Recalculate(sup_analyse, bv1, blksize=rec1_blk, overlap=rec1_ovl, search=search_type, searchparam=search_param)
+    fv1 = Recalculate(sup_analyse, fv1, blksize=rec1_blk, overlap=rec1_ovl, search=search_type, searchparam=search_param)
+
+    # Recalculate Nivel 3 (bloques micro de 4x4 para bordes de anime y texto fino)
+    if rec1_blk > 4:
+        bv1 = Recalculate(sup_analyse, bv1, blksize=4, overlap=2, search=search_type)
+        fv1 = Recalculate(sup_analyse, fv1, blksize=4, overlap=2, search=search_type)
 
     bc1 = Compensate(clip16, sup_comp, bv1)
     fc1 = Compensate(clip16, sup_comp, fv1)
 
-    if use_delta2:
-        bv2 = Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=5)
-        fv2 = Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=5)
-        bv2 = Recalculate(sup_analyse, bv2, blksize=rec_blksize, overlap=rec_overlap, search=5)
-        fv2 = Recalculate(sup_analyse, fv2, blksize=rec_blksize, overlap=rec_overlap, search=5)
+    frames = [fc1, clip16, bc1]
+
+    # ── Delta 2 (Cuadros N-2 y N+2) si radio >= 2 ───────────────────────────
+    if t_rad >= 2:
+        bv2 = Analyse(sup_analyse, isb=True,  delta=2, blksize=blksize, overlap=overlap, search=search_type, searchparam=search_param)
+        fv2 = Analyse(sup_analyse, isb=False, delta=2, blksize=blksize, overlap=overlap, search=search_type, searchparam=search_param)
+        bv2 = Recalculate(sup_analyse, bv2, blksize=rec1_blk, overlap=rec1_ovl, search=search_type)
+        fv2 = Recalculate(sup_analyse, fv2, blksize=rec1_blk, overlap=rec1_ovl, search=search_type)
         bc2 = Compensate(clip16, sup_comp, bv2)
         fc2 = Compensate(clip16, sup_comp, fv2)
+        frames = [fc2, fc1, clip16, bc1, bc2]
 
-        frames   = [fc2, fc1, clip16, bc1, bc2]
-        t_radius = 2
-    else:
-        frames   = [fc1, clip16, bc1]
-        t_radius = 1
+    # ── Delta 3 (Cuadros N-3 y N+3) si radio >= 3 (Modo Máxima Potencia) ───
+    if t_rad >= 3:
+        bv3 = Analyse(sup_analyse, isb=True,  delta=3, blksize=blksize, overlap=overlap, search=search_type)
+        fv3 = Analyse(sup_analyse, isb=False, delta=3, blksize=blksize, overlap=overlap, search=search_type)
+        bv3 = Recalculate(sup_analyse, bv3, blksize=rec1_blk, overlap=rec1_ovl, search=search_type)
+        fv3 = Recalculate(sup_analyse, fv3, blksize=rec1_blk, overlap=rec1_ovl, search=search_type)
+        bc3 = Compensate(clip16, sup_comp, bv3)
+        fc3 = Compensate(clip16, sup_comp, fv3)
+        frames = [fc3, fc2, fc1, clip16, bc1, bc2, bc3]
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 3: MEDIANA TEMPORAL BIDIRECCIONAL MULTI-CUADRO
+    # 3. FILTRADO TEMPORAL PROFUNDO POR MEDIANA
     # ════════════════════════════════════════════════════════════════════════
     interleaved = core.std.Interleave(frames)
     step        = len(frames)
     orig_idx    = len(frames) // 2
 
-    cleaned_all = interleaved.tmedian.TemporalMedian(t_radius, [0, 1, 2] if do_chroma else [0])[orig_idx::step]
+    cleaned_all = interleaved.tmedian.TemporalMedian(t_rad, [0, 1, 2] if do_chroma else [0])[orig_idx::step]
 
     # Separar planos
     y_orig    = core.std.ShufflePlanes(clip16, 0, vs.GRAY)
     y_cleaned = core.std.ShufflePlanes(cleaned_all, 0, vs.GRAY)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 4: DETECTOR DE LÍNEAS MAL DEMODULADAS 1D (FM STREAKS)
+    # 4. REPARADOR 1D DE LÍNEAS DE DEMODULACIÓN FM Y LLUVIA
     # ════════════════════════════════════════════════════════════════════════
-    # Diferencia temporal en luma
     diff_luma = core.std.Expr([y_orig, y_cleaned], f"x y - abs {thr_luma} > {peak} 0 ?")
 
-    # Derivada vertical para detectar líneas horizontales de 1 scanline (firma de RF)
+    # Detección de líneas de RF rasgadas de 1 scanline
     y_up   = y_orig[:-1] + y_orig[-1:]
     y_down = y_orig[:1]  + y_orig[1:]
     v_diff = core.std.Expr([y_orig, y_up, y_down], f"x y - abs x z - abs min {thr_streak} > {peak} 0 ?")
     
-    # Unión de lluvia temporal + líneas horizontales rasgadas
     luma_mask = core.std.Expr([diff_luma, v_diff], "x y max").std.Inflate()
 
     if strength >= 95:
@@ -172,7 +196,7 @@ def QuesoLimpia(
         y_result = core.std.MaskedMerge(y_orig, y_cleaned, luma_mask)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 5: SUPRESIÓN DE COMET-TAILS Y RUIDO CROMA ORTOGONAL
+    # 5. LIMPIEZA DE COMET-TAILS DE CROMA VHS (COLOR-UNDER)
     # ════════════════════════════════════════════════════════════════════════
     if do_chroma:
         u_orig    = core.std.ShufflePlanes(clip16, 1, vs.GRAY)
@@ -180,7 +204,6 @@ def QuesoLimpia(
         u_cleaned = core.std.ShufflePlanes(cleaned_all, 1, vs.GRAY)
         v_cleaned = core.std.ShufflePlanes(cleaned_all, 2, vs.GRAY)
 
-        # Máscara croma con dilatación horizontal para atrapar la cola de cometa
         diff_u = core.std.Expr([u_orig, u_cleaned], f"x y - abs {thr_chroma} > {peak} 0 ?").std.Inflate()
         diff_v = core.std.Expr([v_orig, v_cleaned], f"x y - abs {thr_chroma} > {peak} 0 ?").std.Inflate()
 
@@ -192,7 +215,7 @@ def QuesoLimpia(
         repaired = y_result
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 6: REPARACIÓN DE GATE HAIR Y DEFECTOS ESTÁTICOS
+    # 6. GATE HAIR & INPAINTING ESPACIAL
     # ════════════════════════════════════════════════════════════════════════
     static_mask = None
     if detect_static:
@@ -200,14 +223,12 @@ def QuesoLimpia(
         next_m = luma_mask[1:]  + luma_mask[-1:]
         thr_h  = peak // 2
 
-        # Pelo o suciedad fija en 3 cuadros seguidos
         static_mask = core.std.Expr(
             [luma_mask, prev_m, next_m],
             f"x {thr_h} > y {thr_h} > and z {thr_h} > and {peak} 0 ?"
         )
         static_mask = static_mask.std.Maximum().std.Inflate()
 
-        # Inpainting espacial trilateral (CTMF)
         if do_chroma:
             static_mask_c = core.resize.Bilinear(static_mask, width=u_result.width, height=u_result.height)
             y_spatial  = y_result.ctmf.CTMF(radius=4)
@@ -222,7 +243,7 @@ def QuesoLimpia(
             repaired   = core.std.MaskedMerge(y_result, y_spatial, static_mask)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ETAPA 7: DIAGNÓSTICO VISUAL
+    # 7. DIAGNÓSTICO VISUAL
     # ════════════════════════════════════════════════════════════════════════
     if show_mask == "repair":
         red = core.std.BlankClip(clip16, color=[peak, peak // 2, peak // 2] if do_chroma else [peak])
@@ -241,5 +262,4 @@ def QuesoLimpia(
         stacked = core.std.StackHorizontal([left, right])
         return core.resize.Point(stacked, format=src_fmt_id)
 
-    # Devolver con resolución y formato nativo
     return core.resize.Point(repaired, format=src_fmt_id)

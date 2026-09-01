@@ -3,8 +3,8 @@
   "id": "quesolimpia",
   "version": "1.0.0",
   "name": "QuesoLimpia",
-  "description": "Restauración profesional de lluvia de VHS, manchas y pelos de cámara",
-  "longDescription": "Elimina automáticamente dropouts de cinta VHS, lluvia de puntos y pelos fijos de compuerta (Gate Hair) usando compensación de movimiento sub-píxel y mediana temporal.",
+  "description": "Restauración profesional pesada de lluvia de VHS, dropouts y pelos",
+  "longDescription": "Motor Studio Master de cómputo intensivo: análisis temporal de hasta 7 cuadros con búsqueda exhaustiva de vectores de movimiento sub-píxel, reparación de líneas 1D y desmanchado de croma.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
@@ -19,7 +19,7 @@
     {
       "id": "quesolimpia",
       "name": "QuesoLimpia",
-      "description": "Restauración inteligente",
+      "description": "Restauración profunda de archivo",
       "function": "quesolimpia.QuesoLimpia",
       "parameters": [
         "strength",
@@ -46,7 +46,7 @@
       "step": 5,
       "ui": {
         "label": "Fuerza de Limpieza",
-        "description": "Intensidad global de eliminación de puntos y lluvia de VHS.",
+        "description": "Intensidad global de sustitución de dropouts y lluvia de VHS.",
         "widget": "slider",
         "unit": "%"
       }
@@ -58,20 +58,20 @@
       "max": 30,
       "step": 1,
       "ui": {
-        "label": "Sensibilidad de Lluvia y Puntos",
-        "description": "Sensibilidad a defectos (valores más bajos detectan chispazos y lluvia fina).",
+        "label": "Sensibilidad de Lluvia y Dropouts",
+        "description": "Sensibilidad a defectos (valores más bajos detectan chispazos y lluvia tenue).",
         "widget": "slider"
       }
     },
     "temporalRadius": {
       "type": "integer",
-      "default": 1,
+      "default": 2,
       "min": 1,
-      "max": 2,
+      "max": 3,
       "step": 1,
       "ui": {
-        "label": "Radio Temporal (1 = Normal, 2 = Lluvia Densa)",
-        "description": "Usar 2 para cintas VHS con dropouts severos o película con daño denso.",
+        "label": "Radio Temporal / Potencia de CPU (1 = 3 cuadros, 2 = 5 cuadros, 3 = 7 cuadros)",
+        "description": "Nivel de análisis temporal: 2 o 3 usan máxima potencia de CPU para cintas con daño severo o lluvia densa.",
         "widget": "slider"
       }
     },
@@ -98,7 +98,7 @@
         "widget": "dropdown",
         "optionLabels": {
           "off": "Desactivado (Video limpio)",
-          "repair": "Ver Lluvia y Puntos (Rojo)",
+          "repair": "Ver Lluvia y Dropouts (Rojo)",
           "gate_hair": "Ver Pelos Fijos Detectados (Cian)",
           "side_by_side": "Comparar Antes / Después"
         }
