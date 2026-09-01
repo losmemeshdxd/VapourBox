@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "name": "QuesoLimpia",
   "description": "Restauración profesional pesada de lluvia de VHS, dropouts y pelos",
-  "longDescription": "Motor Studio Master de cómputo intensivo: análisis temporal de hasta 7 cuadros con búsqueda exhaustiva de vectores de movimiento sub-píxel, reparación de líneas 1D y desmanchado de croma.",
+  "longDescription": "Motor Studio Master de cómputo intensivo: análisis temporal profundo de 7 cuadros a máxima potencia de CPU, búsqueda exhaustiva de vectores sub-píxel en 3 niveles, reparación de líneas 1D y desmanchado de croma.",
   "category": "cleanup",
   "icon": "cleaning_services",
   "order": 4,
@@ -24,7 +24,6 @@
       "parameters": [
         "strength",
         "threshold",
-        "temporalRadius",
         "detectStatic",
         "showMask"
       ]
@@ -60,18 +59,6 @@
       "ui": {
         "label": "Sensibilidad de Lluvia y Dropouts",
         "description": "Sensibilidad a defectos (valores más bajos detectan chispazos y lluvia tenue).",
-        "widget": "slider"
-      }
-    },
-    "temporalRadius": {
-      "type": "integer",
-      "default": 2,
-      "min": 1,
-      "max": 3,
-      "step": 1,
-      "ui": {
-        "label": "Radio Temporal / Potencia de CPU (1 = 3 cuadros, 2 = 5 cuadros, 3 = 7 cuadros)",
-        "description": "Nivel de análisis temporal: 2 o 3 usan máxima potencia de CPU para cintas con daño severo o lluvia densa.",
         "widget": "slider"
       }
     },

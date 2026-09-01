@@ -31,7 +31,7 @@ def QuesoLimpia(
     clip:              vs.VideoNode,
     strength:          int   = 85,
     threshold:         int   = 10,
-    temporal_radius:   int   = 2,
+    temporal_radius:   int   = 3,
     detect_static:     bool  = True,
     show_mask:         str   = "off",
     # ── Parámetros de compatibilidad total ──────────────────────────
@@ -51,7 +51,7 @@ def QuesoLimpia(
     blksize:           int | None = None,
     pel:               int | None = None,
     gate_hair:         int   = 50,
-    radius:            int   = 2,
+    radius:            int   = 3,
     rec:               bool  = True,
     exhaustive_search: bool  = True,
     **kwargs,
