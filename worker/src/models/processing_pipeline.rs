@@ -6,7 +6,7 @@ use super::{
     AntiAliasParameters, GeometryParameters, GrainParameters, StabilizeParameters,
     ChromaDenoiseParameters, ChromaFixParameters, ColorCorrectionParameters, CropResizeParameters,
     DebandParameters, DeblockParameters, DehaloParameters, DeinterlaceMethod, DeScratchParameters,
-    SpotLessParameters, SharpenParameters, NoiseReductionParameters, QTGMCParameters, FrameRateParameters, FrameRateMethod, DeflickerParameters, EdgeRepairParameters, GhostRemovalParameters,};
+    SpotLessParameters, QuesoLimpiaParameters, SharpenParameters, NoiseReductionParameters, QTGMCParameters, FrameRateParameters, FrameRateMethod, DeflickerParameters, EdgeRepairParameters, GhostRemovalParameters,};
 
 /// Minimum temporal context (frames on each side of the target) a windowed
 /// preview decodes, regardless of which filters are enabled. Motion-compensated
@@ -116,6 +116,7 @@ pub enum PassType {
     Deinterlace,
     DeScratch,
     SpotLess,
+    QuesoLimpia,
     NoiseReduction,
     ChromaDenoise,
     Dehalo,
@@ -147,6 +148,7 @@ impl PassType {
             PassType::Deinterlace => "Deinterlace",
             PassType::DeScratch => "DeScratch",
             PassType::SpotLess => "SpotLess",
+            PassType::QuesoLimpia => "QuesoLimpia",
             PassType::NoiseReduction => "Noise Reduction",
             PassType::ChromaDenoise => "Chroma Denoise",
             PassType::Dehalo => "Dehalo",
@@ -173,6 +175,7 @@ impl PassType {
             PassType::Deinterlace => "Deinterlace (QTGMC) or inverse telecine (IVTC)",
             PassType::DeScratch => "Remove vertical scratches from scanned film",
             PassType::SpotLess => "Remove dust, dirt, and temporal spots from film",
+            PassType::QuesoLimpia => "Limpieza profesional de polvo y manchas basada en DVO / DIAMANT / MTI DRS",
             PassType::NoiseReduction => "Reduce video noise and grain",
             PassType::ChromaDenoise => "Remove blotchy colour noise (CCD)",
             PassType::Dehalo => "Remove halo artifacts around edges",
@@ -210,6 +213,10 @@ pub struct ProcessingPipeline {
     /// SpotLess pass parameters (spot/dirt removal).
     #[serde(default)]
     pub spotless: SpotLessParameters,
+
+    /// QuesoLimpia pass parameters (professional spot/dirt removal).
+    #[serde(default)]
+    pub quesolimpia: QuesoLimpiaParameters,
 
     /// Noise reduction pass parameters.
     #[serde(default)]
@@ -284,6 +291,7 @@ impl Default for ProcessingPipeline {
             deinterlace: QTGMCParameters::default(),
             descratch: DeScratchParameters::default(),
             spotless: SpotLessParameters::default(),
+            quesolimpia: QuesoLimpiaParameters::default(),
             noise_reduction: NoiseReductionParameters::default(),
             chroma_denoise: ChromaDenoiseParameters::default(),
             dehalo: DehaloParameters::default(),
@@ -313,6 +321,7 @@ impl ProcessingPipeline {
             deinterlace: qtgmc_params.clone(),
             descratch: DeScratchParameters { enabled: false, ..Default::default() },
             spotless: SpotLessParameters { enabled: false, ..Default::default() },
+            quesolimpia: QuesoLimpiaParameters { enabled: false, ..Default::default() },
             noise_reduction: NoiseReductionParameters { enabled: false, ..Default::default() },
             chroma_denoise: ChromaDenoiseParameters { enabled: false, ..Default::default() },
             dehalo: DehaloParameters { enabled: false, ..Default::default() },
@@ -367,6 +376,9 @@ impl ProcessingPipeline {
         }
         if self.spotless.enabled {
             passes.push(PassType::SpotLess);
+        }
+        if self.quesolimpia.enabled {
+            passes.push(PassType::QuesoLimpia);
         }
         if self.noise_reduction.enabled {
             passes.push(PassType::NoiseReduction);
@@ -479,6 +491,9 @@ impl ProcessingPipeline {
                 radius: self.chroma_denoise.radius(),
             },
             PassType::SpotLess => FrameMap::Identity { radius: 2 },
+            PassType::QuesoLimpia => FrameMap::Identity {
+                radius: self.quesolimpia.temporal_radius as u32,
+            },
             PassType::DeScratch => FrameMap::Identity { radius: 1 },
             PassType::Deflicker => FrameMap::Identity { radius: self.deflicker.radius() },
             PassType::EdgeRepair => FrameMap::Identity { radius: 0 },
@@ -586,6 +601,7 @@ impl ProcessingPipeline {
             PassType::Deinterlace => self.deinterlace_enabled(),
             PassType::DeScratch => self.descratch.enabled,
             PassType::SpotLess => self.spotless.enabled,
+            PassType::QuesoLimpia => self.quesolimpia.enabled,
             PassType::NoiseReduction => self.noise_reduction.enabled,
             PassType::ChromaDenoise => self.chroma_denoise.enabled,
             PassType::Dehalo => self.dehalo.enabled,

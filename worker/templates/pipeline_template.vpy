@@ -617,6 +617,38 @@ clip = _remove_dirt(
 {{/SPOTLESS}}
 
 # ============================================================================
+# PASS 4B: QUESOLIMPIA (professional spot/dirt removal)
+# ============================================================================
+{{#QUESOLIMPIA}}
+import sys as _ql_sys
+_ql_sys.path.insert(0, r"{{PIPE_SOURCE_DIR}}")
+from quesolimpia import QuesoLimpia as _QuesoLimpia
+clip = _QuesoLimpia(
+    clip,
+    mode="{{QL_MODE}}",
+    strength={{QL_STRENGTH}},
+    threshold={{QL_THRESHOLD}},
+    spatial_threshold={{QL_SPATIAL_THRESHOLD}},
+    min_dust_size={{QL_MIN_DUST_SIZE}},
+    max_dust_size={{QL_MAX_DUST_SIZE}},
+    detect_bright={{QL_DETECT_BRIGHT}},
+    detect_dark={{QL_DETECT_DARK}},
+    detect_spatial={{QL_DETECT_SPATIAL}},
+    detect_static={{QL_DETECT_STATIC}},
+    grain_suppress={{QL_GRAIN_SUPPRESS}},
+    edge_protect={{QL_EDGE_PROTECT}},
+    scene_protect={{QL_SCENE_PROTECT}},
+    scene_threshold={{QL_SCENE_THRESHOLD}},
+    chroma={{QL_CHROMA}},
+    grain_restore={{QL_GRAIN_RESTORE}},
+    temporal_radius={{QL_TEMPORAL_RADIUS}},
+    blksize={{QL_BLKSIZE}},
+    pel={{QL_PEL}},
+    show_mask="{{QL_SHOW_MASK}}",
+)
+{{/QUESOLIMPIA}}
+
+# ============================================================================
 # PASS 5: NOISE REDUCTION
 # ============================================================================
 {{#NOISE_REDUCTION}}

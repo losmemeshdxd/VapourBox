@@ -217,6 +217,8 @@ class PassListItem extends StatelessWidget {
         return Icons.healing;
       case PassType.spotless:
         return Icons.auto_fix_high;
+      case PassType.quesolimpia:
+        return Icons.cleaning_services;
       case PassType.noiseReduction:
         return Icons.grain;
       case PassType.chromaDenoise:

@@ -2,6 +2,7 @@
   "deinterlace.json",
   "descratch.json",
   "spotless.json",
+  "quesolimpia.json",
   "noise_reduction.json",
   "chroma_denoise.json",
   "deblock.json",

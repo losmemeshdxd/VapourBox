@@ -776,6 +776,38 @@ impl ScriptGenerator {
         }
 
         // ====================================================================
+        // QUESOLIMPIA PASS
+        // ====================================================================
+        let ql = &pipeline.quesolimpia;
+        if ql.enabled {
+            script = script.replace("{{#QUESOLIMPIA}}", "");
+            script = script.replace("{{/QUESOLIMPIA}}", "");
+
+            script = script.replace("{{QL_MODE}}", &ql.mode);
+            script = script.replace("{{QL_STRENGTH}}", &ql.strength.clamp(10, 100).to_string());
+            script = script.replace("{{QL_THRESHOLD}}", &ql.threshold.clamp(1, 60).to_string());
+            script = script.replace("{{QL_SPATIAL_THRESHOLD}}", &ql.spatial_threshold.clamp(1, 40).to_string());
+            script = script.replace("{{QL_MIN_DUST_SIZE}}", &ql.min_dust_size.clamp(0, 8).to_string());
+            script = script.replace("{{QL_MAX_DUST_SIZE}}", &ql.max_dust_size.clamp(2, 64).to_string());
+            script = script.replace("{{QL_DETECT_BRIGHT}}", if ql.detect_bright { "True" } else { "False" });
+            script = script.replace("{{QL_DETECT_DARK}}", if ql.detect_dark { "True" } else { "False" });
+            script = script.replace("{{QL_DETECT_SPATIAL}}", if ql.detect_spatial { "True" } else { "False" });
+            script = script.replace("{{QL_DETECT_STATIC}}", if ql.detect_static { "True" } else { "False" });
+            script = script.replace("{{QL_GRAIN_SUPPRESS}}", &ql.grain_suppress.clamp(0, 100).to_string());
+            script = script.replace("{{QL_EDGE_PROTECT}}", &ql.edge_protect.clamp(0, 100).to_string());
+            script = script.replace("{{QL_SCENE_PROTECT}}", if ql.scene_protect { "True" } else { "False" });
+            script = script.replace("{{QL_SCENE_THRESHOLD}}", &format!("{:.2}", ql.scene_threshold));
+            script = script.replace("{{QL_CHROMA}}", if ql.chroma { "True" } else { "False" });
+            script = script.replace("{{QL_GRAIN_RESTORE}}", &ql.grain_restore.clamp(0, 100).to_string());
+            script = script.replace("{{QL_TEMPORAL_RADIUS}}", &ql.temporal_radius.clamp(1, 2).to_string());
+            script = script.replace("{{QL_BLKSIZE}}", &ql.blksize.clamp(4, 64).to_string());
+            script = script.replace("{{QL_PEL}}", &ql.pel.clamp(1, 4).to_string());
+            script = script.replace("{{QL_SHOW_MASK}}", &ql.show_mask);
+        } else {
+            script = remove_block("{{#QUESOLIMPIA}}", "{{/QUESOLIMPIA}}", script);
+        }
+
+        // ====================================================================
         // NOISE REDUCTION PASS
         // ====================================================================
         let nr = &pipeline.noise_reduction;

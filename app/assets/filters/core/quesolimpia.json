@@ -1,0 +1,244 @@
+{
+  "$schema": "https://vapourbox.app/schemas/filter-v1.json",
+  "id": "quesolimpia",
+  "version": "1.0.0",
+  "name": "QuesoLimpia",
+  "description": "Limpieza profesional de polvo y manchas basada en DVO / DIAMANT / MTI DRS",
+  "longDescription": "Motor de restauración ultra-minucioso de polvo, suciedad y defectos temporales/estáticos.\n\nCombina detección espacio-temporal bidireccional, supresión de falsos positivos por grano, protección de bordes y cortes de escena, además de auto-curación de defectos estáticos (gate hair).",
+  "category": "cleanup",
+  "icon": "cleaning_services",
+  "order": 4,
+  "dependencies": {
+    "vs_plugins": [
+      "libtemporalmedian.dll",
+      "libmvtools.dll",
+      "libtcanny.dll"
+    ]
+  },
+  "methods": [
+    {
+      "id": "quesolimpia",
+      "name": "QuesoLimpia",
+      "description": "Restauración selectiva por mapa de suciedad",
+      "function": "quesolimpia.QuesoLimpia",
+      "parameters": [
+        "mode",
+        "strength",
+        "threshold",
+        "spatialThreshold",
+        "minDustSize",
+        "maxDustSize",
+        "detectBright",
+        "detectDark",
+        "detectSpatial",
+        "detectStatic",
+        "grainSuppress",
+        "edgeProtect",
+        "sceneProtect",
+        "sceneThreshold",
+        "chroma",
+        "grainRestore",
+        "temporalRadius",
+        "blksize",
+        "pel",
+        "showMask"
+      ]
+    }
+  ],
+  "parameters": {
+    "enabled": {
+      "type": "boolean",
+      "default": false,
+      "ui": {
+        "hidden": true
+      }
+    },
+    "mode": {
+      "type": "enum",
+      "default": "balanced",
+      "options": [
+        "gentle",
+        "balanced",
+        "aggressive",
+        "forensic"
+      ],
+      "ui": {
+        "label": "Modo de Restauración",
+        "description": "Preconfiguración de agresividad según el estado del material.",
+        "widget": "dropdown",
+        "optionLabels": {
+          "gentle": "Gentle (Material poco sucio / VHS)",
+          "balanced": "Balanced (Estándar / Telecine)",
+          "aggressive": "Aggressive (16mm / Film muy sucio)",
+          "forensic": "Forensic (Restauración de archivo)"
+        }
+      }
+    },
+    "strength": {
+      "type": "integer",
+      "default": 75,
+      "min": 10,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Fuerza General",
+        "description": "Sensibilidad global de detección de suciedad.",
+        "widget": "slider"
+      }
+    },
+    "detectBright": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Detectar Polvo Brillante",
+        "description": "Detectar y eliminar puntos y manchas blancas."
+      }
+    },
+    "detectDark": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Detectar Polvo Oscuro",
+        "description": "Detectar y eliminar puntos y manchas negras."
+      }
+    },
+    "detectSpatial": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Polvo de Bajo Contraste",
+        "description": "Rama espacial para detectar manchas sutiles de suciedad o moho."
+      }
+    },
+    "detectStatic": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Defectos Estáticos (Gate Hair)",
+        "description": "Detectar y reparar cabellos y manchas fijas de lente / ventanilla con inpainting espacial."
+      }
+    },
+    "grainSuppress": {
+      "type": "integer",
+      "default": 40,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Supresión de Grano (Anti Falsos Positivos)",
+        "description": "Evita confundir la textura del grano de película con suciedad.",
+        "widget": "slider",
+        "advanced": true
+      }
+    },
+    "edgeProtect": {
+      "type": "integer",
+      "default": 50,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Protección de Bordes",
+        "description": "Protege líneas finas, ojos y detalles reales usando detección de bordes Canny.",
+        "widget": "slider",
+        "advanced": true
+      }
+    },
+    "grainRestore": {
+      "type": "integer",
+      "default": 30,
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "ui": {
+        "label": "Compensación de Grano",
+        "description": "Reinyecta grano sintético en las áreas reparadas para que sean invisibles.",
+        "widget": "slider",
+        "advanced": true
+      }
+    },
+    "sceneProtect": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Protección de Cortes de Escena",
+        "description": "Evita artefactos de arrastre en transiciones y cambios de toma.",
+        "advanced": true
+      }
+    },
+    "chroma": {
+      "type": "boolean",
+      "default": true,
+      "ui": {
+        "label": "Procesar Croma",
+        "description": "Limpiar también planos de color.",
+        "advanced": true
+      }
+    },
+    "temporalRadius": {
+      "type": "integer",
+      "default": 1,
+      "min": 1,
+      "max": 2,
+      "step": 1,
+      "ui": {
+        "label": "Radio Temporal",
+        "description": "1 = ±1 cuadro, 2 = ±2 cuadros (mayor precisión, más lento).",
+        "widget": "slider",
+        "advanced": true
+      }
+    },
+    "minDustSize": {
+      "type": "integer",
+      "default": 1,
+      "min": 0,
+      "max": 8,
+      "step": 1,
+      "ui": {
+        "label": "Tamaño Mínimo de Polvo",
+        "description": "Descarta defectos menores a este tamaño en píxeles.",
+        "widget": "slider",
+        "advanced": true
+      }
+    },
+    "maxDustSize": {
+      "type": "integer",
+      "default": 16,
+      "min": 2,
+      "max": 64,
+      "step": 2,
+      "ui": {
+        "label": "Tamaño Máximo de Polvo",
+        "description": "Evita borrar objetos grandes en movimiento.",
+        "widget": "slider",
+        "advanced": true
+      }
+    },
+    "showMask": {
+      "type": "enum",
+      "default": "off",
+      "options": [
+        "off",
+        "raw",
+        "refined",
+        "repair",
+        "static",
+        "side_by_side"
+      ],
+      "ui": {
+        "label": "Diagnóstico Visual",
+        "description": "Modo de vista previa para inspeccionar las máscaras de suciedad.",
+        "widget": "dropdown",
+        "optionLabels": {
+          "off": "Desactivado (Video final)",
+          "raw": "Dirt Map sin filtrar",
+          "refined": "Máscara refinada",
+          "repair": "Overlay de reparación (Rojo/Azul)",
+          "static": "Solo defectos estáticos (Gate Hair)",
+          "side_by_side": "Comparación lado a lado"
+        },
+        "advanced": true
+      }
+    }
+  }
+}

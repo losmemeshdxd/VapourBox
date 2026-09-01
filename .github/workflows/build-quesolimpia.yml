@@ -1,0 +1,61 @@
+name: Build macOS QuesoLimpia
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Build Rust worker (ARM64)
+        run: |
+          cd worker
+          cargo build --release --target aarch64-apple-darwin
+
+      - name: Build Flutter app (ARM64)
+        run: |
+          cd app
+          flutter pub get
+          dart run build_runner build --delete-conflicting-outputs
+          flutter build macos --release
+
+      - name: Assemble VapourBox App Bundle
+        run: |
+          APP_PATH="app/build/macos/Build/Products/Release/VapourBox.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find app/build/macos -name "*.app" | head -n 1)
+          fi
+          echo "Found app at: $APP_PATH"
+          
+          # Inject updated Rust worker
+          cp worker/target/aarch64-apple-darwin/release/vapourbox-worker "$APP_PATH/Contents/MacOS/vapourbox-worker"
+          
+          # Inject templates and quesolimpia.py
+          mkdir -p "$APP_PATH/Contents/Resources/templates"
+          cp -R worker/templates/* "$APP_PATH/Contents/Resources/templates/"
+          
+          # Create zip artifact
+          cd "$(dirname "$APP_PATH")"
+          zip -r -y VapourBox-macOS-arm64-QuesoLimpia.zip "$(basename "$APP_PATH")"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VapourBox-macOS-arm64-QuesoLimpia
+          path: app/build/macos/**/VapourBox-macOS-arm64-QuesoLimpia.zip

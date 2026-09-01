@@ -128,6 +128,7 @@ PassRelevanceResult relevanceFor(PassType pass, VideoInfo? info) {
     // no opinion and offers none.
     case PassType.descratch:
     case PassType.spotless:
+    case PassType.quesolimpia:
     case PassType.noiseReduction:
     case PassType.chromaDenoise:
     case PassType.dehalo:

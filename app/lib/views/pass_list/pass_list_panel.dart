@@ -40,6 +40,7 @@ class PassListPanel extends StatelessWidget {
         PassType.deflicker,
         PassType.descratch,
         PassType.spotless,
+        PassType.quesolimpia,
       ],
     ),
     (
@@ -116,6 +117,9 @@ class PassListPanel extends StatelessWidget {
             case PassType.spotless:
               return item(passType, 'SpotLess', pipeline.spotless.summary,
                   pipeline.spotless.enabled);
+            case PassType.quesolimpia:
+              return item(passType, 'QuesoLimpia', pipeline.quesolimpia.summary,
+                  pipeline.quesolimpia.enabled);
             case PassType.noiseReduction:
               return item(passType, 'Noise Reduction',
                   pipeline.noiseReduction.summary, pipeline.noiseReduction.enabled);

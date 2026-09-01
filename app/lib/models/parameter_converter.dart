@@ -13,6 +13,7 @@ import 'deband_parameters.dart';
 import 'deblock_parameters.dart';
 import 'descratch_parameters.dart';
 import 'spotless_parameters.dart';
+import 'quesolimpia_parameters.dart';
 import 'stabilize_parameters.dart';
 import 'dehalo_parameters.dart';
 import 'dynamic_parameters.dart';
@@ -706,6 +707,36 @@ class ParameterConverter {
     );
   }
 
+  /// Convert quesolimpia parameters to dynamic format.
+  static DynamicParameters fromQuesoLimpia(QuesoLimpiaParameters params) {
+    return DynamicParameters(
+      filterId: 'quesolimpia',
+      enabled: params.enabled,
+      values: {
+        'mode': params.mode,
+        'strength': params.strength,
+        'threshold': params.threshold,
+        'spatialThreshold': params.spatialThreshold,
+        'minDustSize': params.minDustSize,
+        'maxDustSize': params.maxDustSize,
+        'detectBright': params.detectBright,
+        'detectDark': params.detectDark,
+        'detectSpatial': params.detectSpatial,
+        'detectStatic': params.detectStatic,
+        'grainSuppress': params.grainSuppress,
+        'edgeProtect': params.edgeProtect,
+        'sceneProtect': params.sceneProtect,
+        'sceneThreshold': params.sceneThreshold,
+        'chroma': params.chroma,
+        'grainRestore': params.grainRestore,
+        'temporalRadius': params.temporalRadius,
+        'blksize': params.blksize,
+        'pel': params.pel,
+        'showMask': params.showMask,
+      },
+    );
+  }
+
   /// Convert deband parameters to dynamic format.
   static DynamicParameters fromDeband(DebandParameters params) {
     return DynamicParameters(
@@ -909,6 +940,7 @@ class ParameterConverter {
         'deinterlace': fromQTGMC(pipeline.deinterlace),
         'descratch': fromDeScratch(pipeline.descratch),
         'spotless': fromSpotLess(pipeline.spotless),
+        'quesolimpia': fromQuesoLimpia(pipeline.quesolimpia),
         'noise_reduction': fromNoiseReduction(pipeline.noiseReduction),
         'anti_alias': fromAntiAlias(pipeline.antiAlias),
         'stabilize': fromStabilize(pipeline.stabilize),
@@ -1301,6 +1333,34 @@ class ParameterConverter {
     );
   }
 
+  /// Convert dynamic parameters to quesolimpia parameters.
+  static QuesoLimpiaParameters toQuesoLimpia(DynamicParameters params) {
+    final v = params.values;
+    return QuesoLimpiaParameters(
+      enabled: params.enabled,
+      mode: v['mode'] as String? ?? 'balanced',
+      strength: _asInt(v['strength']) ?? 75,
+      threshold: _asInt(v['threshold']) ?? 20,
+      spatialThreshold: _asInt(v['spatialThreshold']) ?? 15,
+      minDustSize: _asInt(v['minDustSize']) ?? 1,
+      maxDustSize: _asInt(v['maxDustSize']) ?? 16,
+      detectBright: v['detectBright'] as bool? ?? true,
+      detectDark: v['detectDark'] as bool? ?? true,
+      detectSpatial: v['detectSpatial'] as bool? ?? true,
+      detectStatic: v['detectStatic'] as bool? ?? true,
+      grainSuppress: _asInt(v['grainSuppress']) ?? 40,
+      edgeProtect: _asInt(v['edgeProtect']) ?? 50,
+      sceneProtect: v['sceneProtect'] as bool? ?? true,
+      sceneThreshold: _asDouble(v['sceneThreshold']) ?? 0.10,
+      chroma: v['chroma'] as bool? ?? true,
+      grainRestore: _asInt(v['grainRestore']) ?? 30,
+      temporalRadius: _asInt(v['temporalRadius']) ?? 1,
+      blksize: _asInt(v['blksize']) ?? 16,
+      pel: _asInt(v['pel']) ?? 2,
+      showMask: v['showMask'] as String? ?? 'off',
+    );
+  }
+
   /// Convert dynamic parameters to deband parameters.
   static DebandParameters toDeband(DynamicParameters params) {
     final v = params.values;
@@ -1536,6 +1596,9 @@ class ParameterConverter {
       spotless: dynamic.get('spotless') != null
           ? toSpotLess(dynamic.get('spotless')!)
           : const SpotLessParameters(),
+      quesolimpia: dynamic.get('quesolimpia') != null
+          ? toQuesoLimpia(dynamic.get('quesolimpia')!)
+          : const QuesoLimpiaParameters(),
       deband: dynamic.get('deband') != null
           ? toDeband(dynamic.get('deband')!)
           : const DebandParameters(),
