@@ -161,7 +161,19 @@ ln -sfn "$PWD/addons" "$HOME/.local/share/VapourBox/addons"
 
 ### macOS (recommended)
 
-Use the debug script, which handles the full workflow (build worker + app, copy into bundle, remove quarantine from deps, launch):
+From a fresh checkout, `dev-macos.sh` is the single command: it verifies the
+toolchain (Xcode Command Line Tools, Rust, Flutter, CocoaPods), installs what is
+missing, points `deps/` at an existing install in `~/Library/Application
+Support/VapourBox/deps` (or builds the bundle if there is none), then hands over
+to `run-debug-macos.sh` with the same flags:
+
+```bash
+./Scripts/dev-macos.sh                  # Set up if needed, then build and launch
+./Scripts/dev-macos.sh --skip-app       # Rebuild worker only (filter/template iteration)
+```
+
+Once the toolchain is in place, the debug script alone handles the build workflow
+(build worker + app, copy into bundle, remove quarantine from deps, launch):
 
 ```bash
 ./Scripts/run-debug-macos.sh            # Full build and launch

@@ -211,6 +211,12 @@ dart run build_runner build
 
 **macOS: Always use the debug script:**
 
+`./Scripts/dev-macos.sh [same flags]` wraps it for a fresh machine — it checks
+Xcode Command Line Tools, Rust, Flutter and CocoaPods, installs whatever is
+missing, links `deps/` to `~/Library/Application Support/VapourBox/deps` if the
+released app already installed the bundle (else runs `download-deps-macos.sh`),
+then `exec`s the script below. Nothing to remember beyond one command.
+
 ```bash
 ./Scripts/run-debug-macos.sh            # Full build (worker + app) and launch
 ./Scripts/run-debug-macos.sh --skip-worker  # Rebuild app only
